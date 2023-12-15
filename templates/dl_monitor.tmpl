@@ -1,0 +1,14 @@
+{{#is_alert}}
+Monitor state: :redalert: at {{last_triggered_at}} UTC
+
+Dead letters detected in dead letter queue ${dead_letters_queue_name}
+They are there for 1 hour
+{{/is_alert}}
+
+{{#is_alert_recovery}}
+Monitor state: :ok_hand: at {{last_triggered_at}} UTC
+
+No dead letters ${dead_letters_queue_name} has recovered.
+{{/is_alert_recovery}}
+
+* Notify: ${notify}
