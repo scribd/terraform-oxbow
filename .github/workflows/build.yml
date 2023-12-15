@@ -1,0 +1,27 @@
+name: CI
+on:
+  push:
+    branches:
+      - main
+    tags: [ '*' ]
+  pull_request:
+    branches:
+      - main
+jobs:
+  terraform:
+    name: 'Terraform'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout'
+        uses: actions/checkout@v2
+
+      - uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.1.2
+      - run: terraform fmt
+      - run: terraform init
+
+      - name: tflint
+        uses: reviewdog/action-tflint@v1.12.0
+        with:
+          github_token: ${{ secrets.github_token }}

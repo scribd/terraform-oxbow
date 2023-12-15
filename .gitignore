@@ -1,0 +1,8 @@
+*.sw*
+terraform.tfvars
+.terraform/
+terraform.tfstate*
+.terraform.lock.hcl
+changes.exist
+.plan
+.idea
