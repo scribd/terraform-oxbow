@@ -80,10 +80,10 @@ resource "aws_kinesis_firehose_delivery_stream" "this_kinesis" {
 }
 
 resource "aws_lambda_function" "this_lambda" {
-  description   = var.lambda_description
-  s3_key        = var.lambda_s3_key
-  s3_bucket     = var.lambda_s3_bucket
-  function_name = var.lambda_function_name
+  description   = var.oxbow_lambda_description
+  s3_key        = var.oxbow_lambda_s3_key
+  s3_bucket     = var.oxbow_lambda_s3_bucket
+  function_name = var.oxbow_lambda_function_name
   role          = aws_iam_role.this_shared_iam_role.arn
   handler       = "provided"
   runtime       = "provided.al2"
@@ -96,10 +96,9 @@ resource "aws_lambda_function" "this_lambda" {
     variables = {
       AWS_S3_LOCKING_PROVIDER = var.aws_s3_locking_provider
       RUST_LOG                = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
-      DYNAMO_LOCK_TABLE_NAME         = var.dynamodb_table_name
-      DYNAMO_LOCK_LEASE_DURATION =  120
+      DYNAMO_LOCK_TABLE_NAME  = var.dynamodb_table_name
       # This value should be identical to the Lambda function's timeout to ensure that another execution of Lambda can take the lock while this execution is still running
-      DYNAMO_LOCK_LEASE_DURATION =  var.lambda_timeout
+      DYNAMO_LOCK_LEASE_DURATION = var.lambda_timeout
     }
   }
   tags = var.tags
@@ -397,7 +396,7 @@ resource "aws_dynamodb_table" "this_oxbow_locking" {
   name         = var.dynamodb_table_name
   billing_mode = "PAY_PER_REQUEST"
   # Default name of the partition key hard-coded in delta-rs
-  hash_key       = "key"
+  hash_key = "key"
 
   ttl {
     attribute_name = "leaseDuration"

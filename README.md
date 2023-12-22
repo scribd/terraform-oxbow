@@ -48,10 +48,10 @@ module "terraform-oxbow" {
   s3_path = ""
 
   shared_iam_role_name                  = ""
-  lambda_function_name                  = ""
-  lambda_description                    = ""
-  lambda_s3_key                         = ""
-  lambda_s3_bucket                      = ""
+  oxbow_lambda_function_name            = ""
+  oxbow_lambda_description              = ""
+  oxbow_lambda_s3_key                   = ""
+  oxbow_lambda_s3_bucket                = ""
   lambda_reserved_concurrent_executions = 1
   lambda_permissions_policy_name        = ""
   rust_log_deltalake_debug_level        = "debug"
