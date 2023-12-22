@@ -2,7 +2,7 @@
 *Terraform module to manage oxbow Lambda and its components.
 We can have the following components in AWS:
 1. Lambda
-2. Kinesis Firehost
+2. Kinesis Data Firehose
 3. SQS 
 4. SQS dead letters
 5. IAM policy
