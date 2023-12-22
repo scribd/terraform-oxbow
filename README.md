@@ -16,7 +16,7 @@ if we need Glue catalog and table
 ```
 enable_aws_glue_catalog_table = true
 ```
-if we need Kinesis firehost delivery stream 
+if we need Kinesis Data Firehose delivery stream 
 ```
 enable_kinesis_firehose_delivery_stream = true
 ```
