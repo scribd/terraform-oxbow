@@ -31,7 +31,7 @@ enable_group_events = true
 
 this is a good start
 ```
-module "app_mesh_logs" {
+module "terraform-oxbow" {
   source = ""
 
   enable_aws_glue_catalog_table           = true
@@ -47,7 +47,7 @@ module "app_mesh_logs" {
   # the place where we store files
   s3_path = ""
 
-  lambda_kinesis_role_name              = ""
+  shared_iam_role_name                  = ""
   lambda_function_name                  = ""
   lambda_description                    = ""
   lambda_s3_key                         = ""

@@ -47,7 +47,7 @@ resource "aws_kinesis_firehose_delivery_stream" "this_kinesis" {
   extended_s3_configuration {
     buffer_size = 128
 
-    role_arn            = aws_iam_role.this_iam_role_lambda_kinesis.arn
+    role_arn            = aws_iam_role.this_shared_iam_role.arn
     bucket_arn          = var.warehouse_bucket_arn
     error_output_prefix = var.kinesis_s3_errors_prefix
     prefix              = var.kinesis_s3_prefix
@@ -70,7 +70,7 @@ resource "aws_kinesis_firehose_delivery_stream" "this_kinesis" {
       }
       schema_configuration {
         database_name = var.glue_database_name
-        role_arn      = aws_iam_role.this_iam_role_lambda_kinesis.arn
+        role_arn      = aws_iam_role.this_shared_iam_role.arn
         table_name    = var.glue_table_name
         region        = "us-east-2"
       }
@@ -84,12 +84,12 @@ resource "aws_lambda_function" "this_lambda" {
   s3_key        = var.lambda_s3_key
   s3_bucket     = var.lambda_s3_bucket
   function_name = var.lambda_function_name
-  role          = aws_iam_role.this_iam_role_lambda_kinesis.arn
+  role          = aws_iam_role.this_shared_iam_role.arn
   handler       = "provided"
   runtime       = "provided.al2"
   memory_size   = var.lambda_memory_size
   # lets set 2 minutes
-  timeout                        = 120
+  timeout                        = var.lambda_timeout
   reserved_concurrent_executions = var.lambda_reserved_concurrent_executions
 
   environment {
@@ -97,6 +97,8 @@ resource "aws_lambda_function" "this_lambda" {
       AWS_S3_LOCKING_PROVIDER = var.aws_s3_locking_provider
       RUST_LOG                = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
       DYNAMO_LOCK_TABLE_NAME  = var.dynamodb_table_name
+      # This value should be identical to the Lambda function's timeout to ensure that another execution of Lambda can take the lock while this execution is still running
+      DYNAMO_LOCK_LEASE_DURATION =  var.lambda_timeout
     }
   }
   tags = var.tags
@@ -108,7 +110,7 @@ resource "aws_lambda_function" "this_group_events_lambda" {
   s3_key        = var.events_lambda_s3_key
   s3_bucket     = var.events_lambda_s3_bucket
   function_name = var.events_lambda_function_name
-  role          = aws_iam_role.this_iam_role_lambda_kinesis.arn
+  role          = aws_iam_role.this_shared_iam_role.arn
   handler       = "provided"
   runtime       = "provided.al2"
 
@@ -378,8 +380,8 @@ resource "aws_iam_policy" "this_kinesis_policy" {
 }
 
 
-resource "aws_iam_role" "this_iam_role_lambda_kinesis" {
-  name               = var.lambda_kinesis_role_name
+resource "aws_iam_role" "this_shared_iam_role" {
+  name               = var.shared_iam_role_name
   assume_role_policy = data.aws_iam_policy_document.this_services_assume_role.json
   managed_policy_arns = concat(
     local.enable_kinesis_firehose_delivery_stream ? [aws_iam_policy.this_kinesis_policy[0].arn] : [],

@@ -73,6 +73,12 @@ variable "lambda_description" {
   default     = "Oxbow lambda for converting parquet files to delta tables"
 }
 
+variable "lambda_timeout" {
+  type        = number
+  description = "Lambda timeout"
+  default     = 120
+}
+
 variable "lambda_s3_key" {
   type        = string
   description = "Lambda s3 key - lambda path on S3 and file name filename"
@@ -179,7 +185,7 @@ variable "sqs_queue_name_dl" {
   description = "Sqs queue name - dead letters"
 }
 
-variable "lambda_kinesis_role_name" {
+variable "shared_iam_role_name" {
   type        = string
   description = "Lambda kinesis IAM role name"
 }
