@@ -24,7 +24,7 @@ if we need s3 bucket notification
 ```
 enable_bucket_notification = true
 ```
-if we need advanced Oxbow lambda setup for myltiprefiltered optimization
+if we need advanced Oxbow lambda setup for multiple table filtered optimization
 ```
 enable_group_events = true
 ```
