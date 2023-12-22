@@ -392,11 +392,9 @@ resource "aws_iam_role" "this_iam_role_lambda_kinesis" {
 # tables.
 resource "aws_dynamodb_table" "this_oxbow_locking" {
   name         = var.dynamodb_table_name
-  billing_mode = "PROVISIONED"
+  billing_mode = "PAY_PER_REQUEST"
   # Default name of the partition key hard-coded in delta-rs
   hash_key       = "key"
-  read_capacity  = 10
-  write_capacity = 10
 
   ttl {
     attribute_name = "leaseDuration"
