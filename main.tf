@@ -173,10 +173,11 @@ resource "aws_sqs_queue" "this_sqs" {
   count                      = local.enable_group_events ? 0 : 1
   name                       = var.sqs_queue_name
   policy                     = data.aws_iam_policy_document.this_sqs_queue_policy_data.json
-  visibility_timeout_seconds = 120
+  visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
+  delay_seconds              = var.sqs_delay_seconds
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.this_DL[0].arn
-    maxReceiveCount     = 10
+    maxReceiveCount     = var.sqs_redrive_policy_maxReceiveCount
   })
   tags = var.tags
 }

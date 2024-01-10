@@ -156,6 +156,24 @@ variable "sqs_queue_name" {
   description = "Sqs queue name"
 }
 
+variable "sqs_visibility_timeout_seconds" {
+  type        = number
+  default     = 120
+  description = "Sqs visibility timeout seconds"
+}
+
+variable "sqs_delay_seconds" {
+  type        = number
+  default     = 180
+  description = "Sqs delivery delay seconds"
+}
+
+variable "sqs_redrive_policy_maxReceiveCount" {
+  type        = number
+  default     = 10
+  description = "Sqs maxReceiveCount"
+}
+
 variable "sqs_fifo_queue_name" {
   type        = string
   default     = "this.fifo"
