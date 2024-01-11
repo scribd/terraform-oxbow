@@ -45,7 +45,6 @@ resource "aws_kinesis_firehose_delivery_stream" "this_kinesis" {
   name        = var.kinesis_delivery_stream_name
   destination = "extended_s3"
   extended_s3_configuration {
-    buffer_size = 128
 
     role_arn            = aws_iam_role.this_shared_iam_role.arn
     bucket_arn          = var.warehouse_bucket_arn
