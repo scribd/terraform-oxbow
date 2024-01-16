@@ -56,7 +56,7 @@ variable "kinesis_s3_errors_prefix" {
   description = "Kinesiss3 errors prefix - s3 location where the files will be output"
 }
 
-variable "oxbow_lambda_function_name" {
+variable "lambda_function_name" {
   type        = string
   description = "Lambda function name"
 }
@@ -67,7 +67,7 @@ variable "events_lambda_function_name" {
   description = "Events Lambda function name"
 }
 
-variable "oxbow_lambda_description" {
+variable "lambda_description" {
   type        = string
   description = "Lambda description"
   default     = "Oxbow lambda for converting parquet files to delta tables"
@@ -79,12 +79,12 @@ variable "lambda_timeout" {
   default     = 120
 }
 
-variable "oxbow_lambda_s3_key" {
+variable "lambda_s3_key" {
   type        = string
   description = "Lambda s3 key - lambda path on S3 and file name filename"
 }
 
-variable "oxbow_lambda_s3_bucket" {
+variable "lambda_s3_bucket" {
   type        = string
   description = "Lambda s3 bucket where lambda is stored"
 }
