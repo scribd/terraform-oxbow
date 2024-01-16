@@ -203,7 +203,7 @@ variable "sqs_queue_name_dl" {
   description = "Sqs queue name - dead letters"
 }
 
-variable "shared_iam_role_name" {
+variable "lambda_kinesis_role_name" {
   type        = string
   description = "Lambda kinesis IAM role name"
 }

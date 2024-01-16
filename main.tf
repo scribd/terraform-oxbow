@@ -381,7 +381,7 @@ resource "aws_iam_policy" "this_kinesis_policy" {
 
 
 resource "aws_iam_role" "this_shared_iam_role" {
-  name               = var.shared_iam_role_name
+  name               = var.lambda_kinesis_role_name
   assume_role_policy = data.aws_iam_policy_document.this_services_assume_role.json
   managed_policy_arns = concat(
     local.enable_kinesis_firehose_delivery_stream ? [aws_iam_policy.this_kinesis_policy[0].arn] : [],
