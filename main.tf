@@ -96,8 +96,6 @@ resource "aws_lambda_function" "this_lambda" {
       AWS_S3_LOCKING_PROVIDER = var.aws_s3_locking_provider
       RUST_LOG                = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
       DYNAMO_LOCK_TABLE_NAME  = var.dynamodb_table_name
-      # This value should be identical to the Lambda function's timeout to ensure that another execution of Lambda can take the lock while this execution is still running
-      DYNAMO_LOCK_LEASE_DURATION = var.lambda_timeout
     }
   }
   tags = var.tags
