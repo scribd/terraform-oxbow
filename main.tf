@@ -79,10 +79,10 @@ resource "aws_kinesis_firehose_delivery_stream" "this_kinesis" {
 }
 
 resource "aws_lambda_function" "this_lambda" {
-  description   = var.oxbow_lambda_description
-  s3_key        = var.oxbow_lambda_s3_key
-  s3_bucket     = var.oxbow_lambda_s3_bucket
-  function_name = var.oxbow_lambda_function_name
+  description   = var.lambda_description
+  s3_key        = var.lambda_s3_key
+  s3_bucket     = var.lambda_s3_bucket
+  function_name = var.lambda_function_name
   role          = aws_iam_role.this_shared_iam_role.arn
   handler       = "provided"
   runtime       = "provided.al2"
