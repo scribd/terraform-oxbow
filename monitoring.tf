@@ -14,7 +14,7 @@ resource "datadog_monitor" "dead_letters_monitor" {
     dead_letters_queue_name = var.sqs_queue_name_dl
     notify                  = join(", ", var.dl_alert_recipients)
   })
-  query = "avg(last_1h):avg:aws.sqs.approximate_number_of_messages_visible{queuename:${var.sqs_queue_name_dl}} > 2"
+  query = "avg(last_1h):avg:aws.sqs.approximate_number_of_messages_visible{queuename:${var.sqs_queue_name_dl}} > ${var.dl_critical}"
 
   monitor_thresholds {
     warning           = local.dl_warning
