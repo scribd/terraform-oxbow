@@ -19,30 +19,32 @@ resource "aws_lambda_function" "auto_tagging" {
   timeout                        = var.lambda_timeout
   reserved_concurrent_executions = var.lambda_reserved_concurrent_executions
 
-  environment {
-    variables = {
-      AWS_S3_LOCKING_PROVIDER = var.aws_s3_locking_provider
-      RUST_LOG                = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
-      DYNAMO_LOCK_TABLE_NAME  = var.dynamodb_table_name
-    }
-  }
   tags = var.tags
 }
 
+resource "aws_sqs_queue" "auto_tagging_dl" {
+  count = var.enable_auto_tagging == true ? 1 : 0
+
+  name   = "${var.sqs_queue_name}-auto_tagging-dl"
+  policy = data.aws_iam_policy_document.auto_tagging_sqs_dl.json
+
+  tags = var.tags
+}
 
 resource "aws_sqs_queue" "auto_tagging" {
   count = var.enable_auto_tagging == true ? 1 : 0
 
-  name   = "${var.sqs_fifo_queue_name}-auto_tagging"
-  policy = data.aws_iam_policy_document.this_sqs_queue_policy_data.json
-
-  content_based_deduplication = true
-  fifo_queue                  = true
+  name                       = "${var.sqs_queue_name}-auto_tagging"
+  policy                     = data.aws_iam_policy_document.auto_tagging_sqs.json
+  visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
+  delay_seconds              = var.sqs_delay_seconds
 
   redrive_policy = jsonencode({
-    deadLetterTargetArn = aws_sqs_queue.this_sqs_fifo_dlq[0].arn
-    maxReceiveCount     = 8
+    deadLetterTargetArn = aws_sqs_queue.auto_tagging_dl[0].arn
+    maxReceiveCount     = var.sqs_redrive_policy_maxReceiveCount
   })
+
+  tags = var.tags
 }
 
 resource "aws_lambda_event_source_mapping" "auto_tagging" {
@@ -61,4 +63,49 @@ resource "aws_lambda_permission" "auto_tagging" {
   function_name = aws_lambda_function.auto_tagging[0].arn
   principal     = "s3.amazonaws.com"
   source_arn    = var.warehouse_bucket_arn
+}
+
+### policies
+data "aws_iam_policy_document" "auto_tagging_sqs" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions = ["sqs:SendMessage"]
+    # Hard-coding an ARN like syntax here because of the dependency cycle
+    resources = [
+      "arn:aws:sqs:*:*:${var.sqs_queue_name}-auto_tagging",
+    ]
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [var.warehouse_bucket_arn]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "auto_tagging_sqs_dl" {
+  statement {
+    sid    = "DLQSendMessages"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+    actions = [
+      "sqs:SendMessage"
+    ]
+    resources = [
+      "${var.sqs_queue_name}-auto_tagging-dl",
+    ]
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "aws:SourceArn"
+      values = [
+        "arn:aws:sqs:*:*:${var.sqs_queue_name}"
+      ]
+    }
+  }
 }
