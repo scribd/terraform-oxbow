@@ -92,11 +92,13 @@ variable "lambda_s3_bucket" {
 variable "auto_tagging_s3_key" {
   type        = string
   description = "Lambda s3 key - auto tagging lambda path on S3 and file name filename"
+  default     = ""
 }
 
 variable "auto_tagging_s3_bucket" {
   type        = string
   description = "s3 bucket where auto tagging lambda is stored"
+  default     = ""
 }
 
 variable "lambda_memory_size" {
