@@ -20,5 +20,5 @@ output "autotag_sqs_arn" {
 
 output "autotag_lambda" {
   description = "Autotagging lambda Arn"
-  value       = var.enable_auto_tagging == false ? "" : aws_lambda_function.auto_tagging.arn
+  value       = var.enable_auto_tagging == false ? "" : aws_lambda_function.auto_tagging[0].arn
 }
