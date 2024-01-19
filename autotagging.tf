@@ -104,7 +104,7 @@ data "aws_iam_policy_document" "auto_tagging_sqs_dl" {
       test     = "ForAllValues:StringEquals"
       variable = "aws:SourceArn"
       values = [
-        "arn:aws:sqs:*:*:${var.sqs_queue_name}"
+        "arn:aws:sqs:*:*:${var.sqs_queue_name}-auto_tagging"
       ]
     }
   }
