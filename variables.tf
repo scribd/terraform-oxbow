@@ -89,6 +89,18 @@ variable "lambda_s3_bucket" {
   description = "Lambda s3 bucket where lambda is stored"
 }
 
+variable "auto_tagging_s3_key" {
+  type        = string
+  description = "Lambda s3 key - auto tagging lambda path on S3 and file name filename"
+  default     = ""
+}
+
+variable "auto_tagging_s3_bucket" {
+  type        = string
+  description = "s3 bucket where auto tagging lambda is stored"
+  default     = ""
+}
+
 variable "lambda_memory_size" {
   type        = number
   default     = 128
@@ -271,5 +283,11 @@ variable "enable_bucket_notification" {
 variable "enable_group_events" {
   type        = bool
   description = "Enable group events"
+  default     = false
+}
+
+variable "enable_auto_tagging" {
+  type        = bool
+  description = "Whether to turn on Auto Tagging Lambda"
   default     = false
 }
