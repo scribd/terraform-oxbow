@@ -191,8 +191,8 @@ data "aws_iam_policy_document" "auto_tagging_lambda"{
     sid = "sqs"
     actions = ["sqs:*"]
     resources = [
-      aws_sqs_queue.auto_tagging.arn,
-      aws_sqs_queue.auto_tagging_dl.arn,
+      aws_sqs_queue.auto_tagging[0].arn,
+      aws_sqs_queue.auto_tagging_dl[0].arn,
     ]
   }
 
