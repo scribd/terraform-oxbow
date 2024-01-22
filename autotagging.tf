@@ -1,8 +1,4 @@
-# This module creates Kinesis Firehose service (optionally), SQS, lambda function OXBOW
-# to receive data and convert it into parquet then Delta log is added by Oxbow lambda
-
-locals {
-}
+# This is the optional Autotagging feature.
 
 resource "aws_lambda_function" "auto_tagging" {
   count = var.enable_auto_tagging == true ? 1 : 0
@@ -26,7 +22,7 @@ resource "aws_sqs_queue" "auto_tagging_dl" {
   count = var.enable_auto_tagging == true ? 1 : 0
 
   name   = "${var.sqs_queue_name}-auto_tagging-dl"
-  policy = data.aws_iam_policy_document.auto_tagging_sqs_dl.json
+  policy = data.aws_iam_policy_document.auto_tagging_sqs_dl[0].json
 
   tags = var.tags
 }
@@ -35,7 +31,7 @@ resource "aws_sqs_queue" "auto_tagging" {
   count = var.enable_auto_tagging == true ? 1 : 0
 
   name                       = "${var.sqs_queue_name}-auto_tagging"
-  policy                     = data.aws_iam_policy_document.auto_tagging_sqs.json
+  policy                     = data.aws_iam_policy_document.auto_tagging_sqs[0].json
   visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
   delay_seconds              = var.sqs_delay_seconds
 
@@ -67,6 +63,8 @@ resource "aws_lambda_permission" "auto_tagging" {
 
 ### policies
 data "aws_iam_policy_document" "auto_tagging_sqs" {
+  count = var.enable_auto_tagging == true ? 1 : 0
+
   statement {
     effect = "Allow"
     principals {
@@ -87,6 +85,8 @@ data "aws_iam_policy_document" "auto_tagging_sqs" {
 }
 
 data "aws_iam_policy_document" "auto_tagging_sqs_dl" {
+  count = var.enable_auto_tagging == true ? 1 : 0
+
   statement {
     sid    = "DLQSendMessages"
     effect = "Allow"
@@ -112,6 +112,8 @@ data "aws_iam_policy_document" "auto_tagging_sqs_dl" {
 
 ### IAM role
 data "aws_iam_policy_document" "auto_tagging_assume_role" {
+  count = var.enable_auto_tagging == true ? 1 : 0
+
   statement {
     effect = "Allow"
     principals {
@@ -129,7 +131,7 @@ resource "aws_iam_role" "auto_tagging_lambda" {
   count = var.enable_auto_tagging == true ? 1 : 0
 
   name                = "${var.lambda_kinesis_role_name}-auto_tagging"
-  assume_role_policy  = data.aws_iam_policy_document.auto_tagging_assume_role.json
+  assume_role_policy  = data.aws_iam_policy_document.auto_tagging_assume_role[0].json
   managed_policy_arns = [aws_iam_policy.auto_tagging_lambda[0].arn]
 
   tags = var.tags
@@ -139,11 +141,13 @@ resource "aws_iam_policy" "auto_tagging_lambda" {
   count = var.enable_auto_tagging == true ? 1 : 0
 
   name   = "${var.lambda_permissions_policy_name}-auto_tagging"
-  policy = data.aws_iam_policy_document.auto_tagging_lambda.json
+  policy = data.aws_iam_policy_document.auto_tagging_lambda[0].json
 }
 
 
 data "aws_iam_policy_document" "auto_tagging_lambda" {
+  count = var.enable_auto_tagging == true ? 1 : 0
+
   statement {
     sid = "dynamodb"
     actions = [
