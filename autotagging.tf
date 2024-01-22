@@ -11,7 +11,7 @@ resource "aws_lambda_function" "auto_tagging" {
   s3_key        = var.auto_tagging_s3_key
   s3_bucket     = var.auto_tagging_s3_bucket
   function_name = "${var.lambda_function_name}-auto_tagging"
-  role          = aws_iam_role.this_iam_role_lambda_kinesis.arn
+  role          = aws_iam_role.auto_tagging_lambda.arn
   handler       = "provided"
   runtime       = "provided.al2"
   memory_size   = var.lambda_memory_size
@@ -107,5 +107,102 @@ data "aws_iam_policy_document" "auto_tagging_sqs_dl" {
         "arn:aws:sqs:*:*:${var.sqs_queue_name}-auto_tagging"
       ]
     }
+  }
+}
+
+### IAM role
+data "aws_iam_policy_document" "auto_tagging_assume_role" {
+  statement {
+    effect = "Allow"
+    principals {
+      type = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+    actions = [
+      "sts:AssumeRole",
+    ]
+  }
+}
+
+
+resource "aws_iam_role" "auto_tagging_lambda" {
+  count = var.enable_auto_tagging == true ? 1 : 0
+
+  name               = "${var.lambda_kinesis_role_name}-auto_tagging"
+  assume_role_policy = data.aws_iam_policy_document.auto_tagging_assume_role.json
+  managed_policy_arns = [aws_iam_policy.auto_tagging_lambda.arn]
+
+  tags = var.tags
+}
+
+resource "aws_iam_policy" "auto_tagging_lambda" {
+  count = var.enable_auto_tagging == true ? 1 : 0
+
+  name = "${var.lambda_permissions_policy_name}-auto_tagging"
+  policy = data.aws_iam_policy_document.auto_tagging_lambda.json
+}
+
+
+data "aws_iam_policy_document" "auto_tagging_lambda"{
+  statement {
+    sid = "dynamodb"
+    actions = [
+      "dynamodb:*",
+    ]
+    resources = [
+      aws_dynamodb_table.this_oxbow_locking.arn
+    ]
+  }
+  statement {
+    sid = "s3"
+    actions = [
+      "s3:GetObject",
+      "s3:GetObjectTagging",
+      "s3:GetObjectVersion",
+      "s3:GetBucketLocation",
+      "s3:ListBucket",
+      "s3:ListBucketVersions",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:PutObjectTagging",
+      "s3:DeleteObjectTagging",
+    ]
+    resources = [
+      "${var.warehouse_bucket_arn}/${var.s3_path}",
+      "${var.warehouse_bucket_arn}/${var.s3_path}/*"
+    ]
+  }
+  statement {
+    sid = "s3read"
+    actions = [
+          "s3:GetObject",
+          "s3:GetObjectTagging",
+          "s3:GetObjectVersion",
+          "s3:GetBucketLocation",
+          "s3:ListBucket",
+        "s3:ListBucketVersions",
+    ]
+    resources = [
+      var.warehouse_bucket_arn,
+      "${var.warehouse_bucket_arn}/*"
+    ]
+  }  
+  statement {
+    sid = "sqs"
+    actions = ["sqs:*"]
+    resources = [
+      aws_sqs_queue.auto_tagging.arn,
+      aws_sqs_queue.auto_tagging_dl.arn,
+    ]
+  }
+
+  statement {
+    sid = "logs"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+    resources = ["*"]
   }
 }
