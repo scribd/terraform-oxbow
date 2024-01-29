@@ -291,3 +291,9 @@ variable "enable_auto_tagging" {
   description = "Whether to turn on Auto Tagging Lambda"
   default     = false
 }
+
+variable "sns_topic_arn" {
+  type        = string
+  description = "Optional arn to enable the SNS subscription and ENV var for Oxbo"
+  default     = ""
+}
