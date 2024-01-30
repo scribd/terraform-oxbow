@@ -15,6 +15,12 @@ resource "aws_lambda_function" "auto_tagging" {
   timeout                        = var.lambda_timeout
   reserved_concurrent_executions = var.lambda_reserved_concurrent_executions
 
+  environment {
+    variables = {
+      UNWRAP_SNS_ENVELOPE     = var.sns_topic_arn == "" ? false : true
+    }
+  }
+
   tags = var.tags
 }
 
@@ -41,6 +47,14 @@ resource "aws_sqs_queue" "auto_tagging" {
   })
 
   tags = var.tags
+}
+
+resource "aws_sns_topic_subscription" "auto_tagging" {
+  count = var.sns_topic_arn == "" ? 0 : 1
+
+  topic_arn = var.sns_topic_arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.auto_tagging.arn
 }
 
 resource "aws_lambda_event_source_mapping" "auto_tagging" {

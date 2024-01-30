@@ -96,6 +96,7 @@ resource "aws_lambda_function" "this_lambda" {
       AWS_S3_LOCKING_PROVIDER = var.aws_s3_locking_provider
       RUST_LOG                = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
       DYNAMO_LOCK_TABLE_NAME  = var.dynamodb_table_name
+      UNWRAP_SNS_ENVELOPE     = var.sns_topic_arn == "" ? false : true
     }
   }
   tags = var.tags
@@ -184,6 +185,14 @@ resource "aws_sqs_queue" "this_DL" {
   name   = var.sqs_queue_name_dl
   policy = data.aws_iam_policy_document.this_dead_letter_queue_policy.json
   tags   = var.tags
+}
+
+resource "aws_sns_topic_subscription" "this_sns_sub" {
+  count = var.sns_topic_arn == "" ? 0 : 1
+
+  topic_arn = var.sns_topic_arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.this_sqs.arn
 }
 
 resource "aws_lambda_permission" "this_lambda_allow_bucket_permissions" {
