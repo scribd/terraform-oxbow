@@ -170,7 +170,7 @@ resource "aws_lambda_event_source_mapping" "this_lambda_events" {
 resource "aws_sqs_queue" "this_sqs" {
   count                      = local.enable_group_events ? 0 : 1
   name                       = var.sqs_queue_name
-  policy                     = data.aws_iam_policy_document.this_sqs_queue_policy_data.json
+  policy                     = var.sns_topic_arn == "" ? data.aws_iam_policy_document.this_sqs_queue_policy_data.json : data.aws_iam_policy_document.this_sns_to_sqs[0].json
   visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
   delay_seconds              = var.sqs_delay_seconds
   redrive_policy = jsonencode({
@@ -311,6 +311,27 @@ data "aws_iam_policy_document" "this_sqs_queue_policy_data" {
     }
   }
 }
+
+data "aws_iam_policy_document" "this_sns_to_sqs" {
+  count = var.sns_topic_arn == "" ? 0 : 1
+
+  statement {
+    effect = "Allow"
+    principals {
+      type        = ""
+      identifiers = [""]
+    }
+    actions   = ["sqs:SendMessage"]
+    resources = local.enable_group_events ? ["arn:aws:sqs:*:*:${var.sqs_group_queue_name}", "arn:aws:sqs:*:*:${var.sqs_fifo_queue_name}.fifo"] : ["arn:aws:sqs:*:*:${var.sqs_queue_name}"]
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [var.sns_topic_arn]
+    }
+  }
+
+}
+
 
 data "aws_iam_policy_document" "this_dead_letter_queue_policy" {
   statement {

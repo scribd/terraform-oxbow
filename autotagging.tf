@@ -17,7 +17,7 @@ resource "aws_lambda_function" "auto_tagging" {
 
   environment {
     variables = {
-      UNWRAP_SNS_ENVELOPE     = var.sns_topic_arn == "" ? false : true
+      UNWRAP_SNS_ENVELOPE = var.sns_topic_arn == "" ? false : true
     }
   }
 
@@ -37,7 +37,7 @@ resource "aws_sqs_queue" "auto_tagging" {
   count = var.enable_auto_tagging == true ? 1 : 0
 
   name                       = "${var.sqs_queue_name}-auto_tagging"
-  policy                     = data.aws_iam_policy_document.auto_tagging_sqs[0].json
+  policy                     = var.sns_topic_arn == "" ? data.aws_iam_policy_document.auto_tagging_sqs[0].json : data.aws_iam_policy_document.auto_tagging_sns[0].json
   visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
   delay_seconds              = var.sqs_delay_seconds
 
@@ -96,6 +96,26 @@ data "aws_iam_policy_document" "auto_tagging_sqs" {
       values   = [var.warehouse_bucket_arn]
     }
   }
+}
+
+data "aws_iam_policy_document" "auto_tagging_sns" {
+  count = var.sns_topic_arn == "" ? 0 : 1
+
+  statement {
+    effect = "Allow"
+    principals {
+      type        = ""
+      identifiers = [""]
+    }
+    actions   = ["sqs:SendMessage"]
+    resources = ["arn:aws:sqs:*:*:${var.sqs_queue_name}-auto_tagging", ]
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [var.sns_topic_arn]
+    }
+  }
+
 }
 
 data "aws_iam_policy_document" "auto_tagging_sqs_dl" {
