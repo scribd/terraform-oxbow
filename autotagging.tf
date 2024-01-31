@@ -54,7 +54,7 @@ resource "aws_sns_topic_subscription" "auto_tagging" {
 
   topic_arn = var.sns_topic_arn
   protocol  = "sqs"
-  endpoint  = aws_sqs_queue.auto_tagging.arn
+  endpoint  = aws_sqs_queue.auto_tagging[0].arn
 }
 
 resource "aws_lambda_event_source_mapping" "auto_tagging" {
