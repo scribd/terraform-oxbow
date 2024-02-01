@@ -318,8 +318,8 @@ data "aws_iam_policy_document" "this_sns_to_sqs" {
   statement {
     effect = "Allow"
     principals {
-      type        = ""
-      identifiers = [""]
+      type        = "*"
+      identifiers = ["*"]
     }
     actions   = ["sqs:SendMessage"]
     resources = local.enable_group_events ? ["arn:aws:sqs:*:*:${var.sqs_group_queue_name}", "arn:aws:sqs:*:*:${var.sqs_fifo_queue_name}.fifo"] : ["arn:aws:sqs:*:*:${var.sqs_queue_name}"]

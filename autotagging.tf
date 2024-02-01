@@ -104,8 +104,8 @@ data "aws_iam_policy_document" "auto_tagging_sns" {
   statement {
     effect = "Allow"
     principals {
-      type        = ""
-      identifiers = [""]
+      type        = "*"
+      identifiers = ["*"]
     }
     actions   = ["sqs:SendMessage"]
     resources = ["arn:aws:sqs:*:*:${var.sqs_queue_name}-auto_tagging", ]
