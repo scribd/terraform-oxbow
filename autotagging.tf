@@ -50,7 +50,7 @@ resource "aws_sqs_queue" "auto_tagging" {
 }
 
 resource "aws_sns_topic_subscription" "auto_tagging" {
-  count = var.sns_topic_arn == "" ? 0 : 1
+  count = var.enable_auto_tagging == true ? var.sns_topic_arn == "" ? 0 : 1 : 0
 
   topic_arn = var.sns_topic_arn
   protocol  = "sqs"
@@ -99,7 +99,7 @@ data "aws_iam_policy_document" "auto_tagging_sqs" {
 }
 
 data "aws_iam_policy_document" "auto_tagging_sns" {
-  count = var.sns_topic_arn == "" ? 0 : 1
+  count = var.enable_auto_tagging == true ? var.sns_topic_arn == "" ? 0 : 1 : 0
 
   statement {
     effect = "Allow"
