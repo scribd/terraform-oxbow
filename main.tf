@@ -96,7 +96,7 @@ resource "aws_lambda_function" "this_lambda" {
       AWS_S3_LOCKING_PROVIDER = var.aws_s3_locking_provider
       RUST_LOG                = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
       DYNAMO_LOCK_TABLE_NAME  = var.dynamodb_table_name
-      UNWRAP_SNS_ENVELOPE     = var.sns_topic_arn == "" ? false : true
+      UNWRAP_SNS_ENVELOPE     = var.enable_group_events == true ? false : var.sns_topic_arn == "" ? false : true
     }
   }
   tags = var.tags
@@ -114,8 +114,9 @@ resource "aws_lambda_function" "group_events_lambda" {
 
   environment {
     variables = {
-      RUST_LOG  = "group-events=${var.rust_log_oxbow_debug_level}"
-      QUEUE_URL = aws_sqs_queue.oxbow_lambda_fifo_sqs[0].url
+      RUST_LOG            = var.rust_log_oxbow_debug_level
+      QUEUE_URL           = aws_sqs_queue.oxbow_lambda_fifo_sqs[0].url
+      UNWRAP_SNS_ENVELOPE = var.sns_topic_arn == "" ? false : true
     }
   }
 }
