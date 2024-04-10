@@ -11,7 +11,7 @@ resource "datadog_monitor" "dead_letters_monitor" {
   type = "metric alert"
   name = "${var.sqs_queue_name_dl}-monitor"
   message = templatefile("${path.module}/templates/dl_monitor.tmpl", {
-    dead_letters_queue_name = var.sqs_queue_name_dl
+    dead_letters_queue_name = local.enable_group_events ? var.sqs_fifo_DL_queue_name : var.sqs_queue_name_dl
     notify                  = join(", ", var.dl_alert_recipients)
   })
   query = "avg(last_1h):avg:aws.sqs.approximate_number_of_messages_visible{queuename:${var.sqs_queue_name_dl}} > ${var.dl_critical}"
