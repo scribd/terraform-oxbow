@@ -77,6 +77,10 @@ resource "aws_kinesis_firehose_delivery_stream" "this_kinesis" {
   }
   tags = var.tags
 }
+locals {
+  oxbow_lambda_unwrap_sns_event      = var.enable_group_events == true ? {} : var.sns_topic_arn == "" ? {} : { UNWRAP_SNS_ENVELOPE = true }
+  group_eventlambda_unwrap_sns_event = var.sns_topic_arn == "" ? {} : { UNWRAP_SNS_ENVELOPE = true }
+}
 
 resource "aws_lambda_function" "this_lambda" {
   description   = var.lambda_description
@@ -92,12 +96,10 @@ resource "aws_lambda_function" "this_lambda" {
   reserved_concurrent_executions = var.lambda_reserved_concurrent_executions
 
   environment {
-    variables = {
+    variables = merge({
       AWS_S3_LOCKING_PROVIDER = var.aws_s3_locking_provider
       RUST_LOG                = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
-      DYNAMO_LOCK_TABLE_NAME  = var.dynamodb_table_name
-      UNWRAP_SNS_ENVELOPE     = var.enable_group_events == true ? false : var.sns_topic_arn == "" ? false : true
-    }
+    DYNAMO_LOCK_TABLE_NAME = var.dynamodb_table_name }, local.oxbow_lambda_unwrap_sns_event)
   }
   tags = var.tags
 }
@@ -113,11 +115,10 @@ resource "aws_lambda_function" "group_events_lambda" {
   runtime       = "provided.al2"
 
   environment {
-    variables = {
-      RUST_LOG            = var.rust_log_oxbow_debug_level
-      QUEUE_URL           = aws_sqs_queue.oxbow_lambda_fifo_sqs[0].url
-      UNWRAP_SNS_ENVELOPE = var.sns_topic_arn == "" ? false : true
-    }
+    variables = merge({
+      RUST_LOG  = var.rust_log_oxbow_debug_level
+      QUEUE_URL = aws_sqs_queue.oxbow_lambda_fifo_sqs[0].url
+    }, local.group_eventlambda_unwrap_sns_event)
   }
 }
 
