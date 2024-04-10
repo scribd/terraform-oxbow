@@ -10,7 +10,7 @@ output "lambda_arn" {
 
 output "sqs_queue_arn" {
   description = "SQSqueue ARN"
-  value       = length(aws_sqs_queue.this_sqs) > 0 ? aws_sqs_queue.this_sqs[0].arn : aws_sqs_queue.this_sqs_fifo[0].arn
+  value       = length(aws_sqs_queue.this_sqs) > 0 ? aws_sqs_queue.this_sqs[0].arn : aws_sqs_queue.oxbow_lambda_fifo_sqs[0].arn
 }
 
 output "autotag_sqs_arn" {
