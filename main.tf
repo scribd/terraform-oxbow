@@ -192,7 +192,7 @@ resource "aws_sns_topic_subscription" "this_sns_sub" {
 
   topic_arn = var.sns_topic_arn
   protocol  = "sqs"
-  endpoint  = aws_sqs_queue.this_sqs[0].arn
+  endpoint  = local.enable_group_events ? aws_sqs_queue.this_group_events[0].arn : aws_sqs_queue.this_sqs[0].arn
 }
 
 resource "aws_lambda_permission" "this_lambda_allow_bucket_permissions" {
