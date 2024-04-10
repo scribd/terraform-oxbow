@@ -129,7 +129,7 @@ data "aws_iam_policy_document" "oxbow_lambda_fifo_sqs" {
       type        = "*"
       identifiers = ["*"]
     }
-    actions = ["sqs:SendMessage"]
+    actions = ["sqs:SendMessage", "sqs:ReceiveMessage"]
     # Hard-coding an ARN like syntax here because of the dependency cycle
     resources = ["arn:aws:sqs:*:*:${var.sqs_fifo_queue_name}.fifo"]
 
@@ -150,9 +150,7 @@ data "aws_iam_policy_document" "oxbow_lambda_fifo_sqs_dlq" {
       type        = "AWS"
       identifiers = ["*"]
     }
-    actions = [
-      "sqs:SendMessage"
-    ]
+    actions   = ["sqs:SendMessage", "sqs:ReceiveMessage"]
     resources = ["arn:aws:sqs:*:*:${var.sqs_fifo_DL_queue_name}"]
     condition {
       test     = "ForAllValues:StringEquals"
@@ -200,7 +198,7 @@ data "aws_iam_policy_document" "group_event_lambda_sqs" {
       type        = "*"
       identifiers = ["*"]
     }
-    actions = ["sqs:SendMessage"]
+    actions = ["sqs:SendMessage", "sqs:ReceiveMessage"]
     # Hard-coding an ARN like syntax here because of the dependency cycle
     resources = ["arn:aws:sqs:*:*:${var.sqs_group_queue_name}"]
     condition {
@@ -220,9 +218,7 @@ data "aws_iam_policy_document" "group_event_lambda_sqs_dlq" {
       type        = "AWS"
       identifiers = ["*"]
     }
-    actions = [
-      "sqs:SendMessage"
-    ]
+    actions   = ["sqs:SendMessage", "sqs:ReceiveMessage"]
     resources = ["arn:aws:sqs:*:*:${var.sqs_group_DL_queue_name}"]
     condition {
       test     = "ForAllValues:StringEquals"
