@@ -163,13 +163,14 @@ data "aws_iam_policy_document" "oxbow_lambda_fifo_sqs_dlq" {
 }
 
 resource "aws_sqs_queue" "oxbow_lambda_fifo_sqs" {
-  count  = local.enable_group_events ? 1 : 0
-  name   = "${var.sqs_fifo_queue_name}.fifo"
-  policy = data.aws_iam_policy_document.oxbow_lambda_fifo_sqs[0].json
-
+  count                       = local.enable_group_events ? 1 : 0
+  name                        = "${var.sqs_fifo_queue_name}.fifo"
+  policy                      = data.aws_iam_policy_document.oxbow_lambda_fifo_sqs[0].json
+  visibility_timeout_seconds  = var.sqs_visibility_timeout_seconds
+  delay_seconds               = var.sqs_delay_seconds
   content_based_deduplication = true
   fifo_queue                  = true
-
+  tags                        = var.tags
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.oxbow_lambda_fifo_sqs_dlq[0].arn
     maxReceiveCount     = 8
@@ -181,12 +182,14 @@ resource "aws_sqs_queue" "oxbow_lambda_fifo_sqs_dlq" {
   name       = "${var.sqs_fifo_DL_queue_name}.fifo"
   policy     = data.aws_iam_policy_document.oxbow_lambda_fifo_sqs_dlq[0].json
   fifo_queue = true
+  tags       = var.tags
 }
 
 resource "aws_lambda_event_source_mapping" "group_events_lambda_sqs_trigger" {
   count            = local.enable_group_events ? 1 : 0
   event_source_arn = aws_sqs_queue.group_events_lambda_sqs[0].arn
   function_name    = aws_lambda_function.group_events_lambda[0].arn
+
 }
 
 
@@ -232,20 +235,23 @@ data "aws_iam_policy_document" "group_event_lambda_sqs_dlq" {
 
 
 resource "aws_sqs_queue" "group_events_lambda_sqs" {
-  count  = local.enable_group_events ? 1 : 0
-  name   = var.sqs_group_queue_name
-  policy = var.sns_topic_arn == "" ? data.aws_iam_policy_document.group_event_lambda_sqs[0].json : data.aws_iam_policy_document.this_sns_to_sqs[0].json
-
+  count                      = local.enable_group_events ? 1 : 0
+  name                       = var.sqs_group_queue_name
+  policy                     = var.sns_topic_arn == "" ? data.aws_iam_policy_document.group_event_lambda_sqs[0].json : data.aws_iam_policy_document.this_sns_to_sqs[0].json
+  visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
+  delay_seconds              = var.sqs_delay_seconds
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.group_events_lambda_sqs_dlq[0].arn
     maxReceiveCount     = 8
   })
+  tags = var.tags
 }
 
 resource "aws_sqs_queue" "group_events_lambda_sqs_dlq" {
   count  = local.enable_group_events ? 1 : 0
   policy = data.aws_iam_policy_document.group_event_lambda_sqs_dlq[0].json
   name   = var.sqs_group_DL_queue_name
+  tags   = var.tags
 }
 
 
@@ -367,7 +373,7 @@ resource "aws_iam_policy" "this_lambda_permissions" {
       },
       {
         Action   = ["sqs:*"]
-        Resource = local.enable_group_events ? aws_sqs_queue.group_events_lambda_sqs[0].arn : aws_sqs_queue.this_sqs[0].arn
+        Resource = local.enable_group_events ? [aws_sqs_queue.group_events_lambda_sqs[0].arn, aws_sqs_queue.oxbow_lambda_fifo_sqs[0].arn] : [aws_sqs_queue.this_sqs[0].arn]
         Effect   = "Allow"
       },
       {
