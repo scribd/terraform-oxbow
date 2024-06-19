@@ -294,6 +294,30 @@ variable "enable_auto_tagging" {
 
 variable "sns_topic_arn" {
   type        = string
-  description = "Optional arn to enable the SNS subscription and ENV var for Oxbo"
+  description = "Optional arn to enable the SNS subscription and ENV var for Oxbow"
   default     = ""
+}
+
+variable "enable_glue_create" {
+  type        = bool
+  description = "Whether to turn on Glue create Lambda"
+  default     = false
+}
+
+variable "glue_create_config" {
+  type = object({
+    athena_workgroup_name = string // Name of AWS Athena workgroup
+    athena_data_source    = string // Arn name of AWS Athena data source (catalog)
+    athena_bucket_name    = string // name of AWS Athena bucket.
+    lambda_s3_key         = string // lambda s3 key - lambda path on S3 and file name filename
+    lambda_s3_bucket      = string // lambda s3 bucket where lambda is stored
+    lambda_function_name  = string // lambda function name
+    path_regex            = string //  regexp for mapping s3 path to database/table
+    sns_topic_arn         = string // sns topic arn with s3 events (source for lambda)
+    sqs_queue_name        = string // name of sqs queue for glue-sync lambda
+    sqs_queue_name_dl     = string // name dead letter sqs que with not processed s3 events
+    iam_role_name         = string // lambda role name
+    iam_police_name       = string // lambda policy name
+  })
+  description = "Configuration of glue-create lambda"
 }
