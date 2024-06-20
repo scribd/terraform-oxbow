@@ -570,6 +570,7 @@ resource "aws_athena_workgroup" "glue_create" {
       output_location = "s3://${module.glue_create_athena_workgroup_bucket[0].s3_bucket_id}/"
     }
   }
+  depends_on = [module.glue_create_athena_workgroup_bucket]
 }
 
 data "aws_iam_policy_document" "glue_create_sqs" {
