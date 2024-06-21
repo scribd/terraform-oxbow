@@ -317,7 +317,7 @@ variable "glue_create_config" {
     sqs_queue_name        = string // name of sqs queue for glue-sync lambda
     sqs_queue_name_dl     = string // name dead letter sqs que with not processed s3 events
     iam_role_name         = string // lambda role name
-    iam_police_name       = string // lambda policy name
+    iam_policy_name       = string // lambda policy name
   })
   description = "Configuration of glue-create lambda"
 }
