@@ -747,10 +747,6 @@ data "aws_iam_policy_document" "glue_create" {
   }
   statement {
     effect = "Allow"
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
     actions   = ["sqs:ReceiveMessage"]
     resources = [aws_sqs_queue.glue_create[0].arn]
 
@@ -762,10 +758,6 @@ data "aws_iam_policy_document" "glue_create" {
   }
   statement {
     effect = "Allow"
-    principals {
-      type        = "AWS"
-      identifiers = ["*"]
-    }
     actions = [
       "sqs:SendMessage"
     ]
@@ -781,7 +773,7 @@ data "aws_iam_policy_document" "glue_create" {
 resource "aws_iam_policy" "glue_create_managed" {
   count = local.enable_glue_create ? 1 : 0
 
-  name        = var.glue_create_config.iam_police_name
+  name        = var.glue_create_config.iam_policy_name
   description = "Glue create policy allows access to Athena and S3"
   policy      = data.aws_iam_policy_document.glue_create[0].json
   tags        = var.tags
