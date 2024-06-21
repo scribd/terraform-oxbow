@@ -582,7 +582,7 @@ data "aws_iam_policy_document" "glue_create_sqs" {
       type        = "*"
       identifiers = ["*"]
     }
-    actions   = ["sqs:SendMessage"]
+    actions   = ["sqs:SendMessage", "sqs:ReceiveMessage"]
     resources = ["arn:aws:sqs:*:*:${var.glue_create_config.sqs_queue_name}"]
     condition {
       test     = "ArnEquals"
@@ -601,7 +601,7 @@ data "aws_iam_policy_document" "glue_create_sqs_dl" {
       type        = "AWS"
       identifiers = ["*"]
     }
-    actions   = ["sqs:SendMessage"]
+    actions   = ["sqs:SendMessage", "sqs:ReceiveMessage"]
     resources = ["arn:aws:sqs:*:*:${var.glue_create_config.sqs_queue_name_dl}"]
     condition {
       test     = "ForAllValues:StringEquals"
@@ -746,27 +746,18 @@ data "aws_iam_policy_document" "glue_create" {
     ]
   }
   statement {
-    effect = "Allow"
-    actions   = ["sqs:ReceiveMessage"]
+    effect    = "Allow"
+    actions   = ["sqs:*"]
     resources = [aws_sqs_queue.glue_create[0].arn]
-
-    condition {
-      test     = "ArnEquals"
-      variable = "aws:SourceArn"
-      values   = [var.warehouse_bucket_arn]
-    }
   }
   statement {
     effect = "Allow"
     actions = [
-      "sqs:SendMessage"
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
     ]
-    resources = [aws_sqs_queue.glue_create[0].arn]
-    condition {
-      test     = "ForAllValues:StringEquals"
-      variable = "aws:SourceArn"
-      values   = [aws_sqs_queue.glue_create_dl[0].arn]
-    }
+    resources = ["*"]
   }
 }
 
