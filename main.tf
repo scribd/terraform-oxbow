@@ -724,6 +724,7 @@ data "aws_iam_policy_document" "glue_create" {
     actions = [
       "glue:GetDatabase",
       "glue:GetDatabases",
+      "glue:CreateDatabase"
     ]
     resources = [
       "*"
