@@ -788,7 +788,7 @@ resource "aws_lambda_function" "glue_create_lambda" {
   s3_key        = var.glue_create_config.lambda_s3_key
   s3_bucket     = var.glue_create_config.lambda_s3_bucket
   function_name = var.glue_create_config.lambda_function_name
-  role          = aws_iam_role.glue_create.arn
+  role          = aws_iam_role.glue_create[0].arn
   handler       = "provided"
   runtime       = "provided.al2"
 
