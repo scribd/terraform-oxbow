@@ -82,6 +82,8 @@ resource "aws_kinesis_firehose_delivery_stream" "this_kinesis" {
 locals {
   oxbow_lambda_unwrap_sns_event      = var.enable_group_events == true ? {} : var.sns_topic_arn == "" ? {} : { UNWRAP_SNS_ENVELOPE = true }
   group_eventlambda_unwrap_sns_event = var.sns_topic_arn == "" ? {} : { UNWRAP_SNS_ENVELOPE = true }
+  oxbow_lambda_schema_evolution      = var.enable_schema_evolution == false ? {} : { SCHEMA_EVOLUTION = true }
+
 }
 
 resource "aws_lambda_function" "this_lambda" {
@@ -101,7 +103,7 @@ resource "aws_lambda_function" "this_lambda" {
     variables = merge({
       AWS_S3_LOCKING_PROVIDER = var.aws_s3_locking_provider
       RUST_LOG                = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
-    DYNAMO_LOCK_TABLE_NAME = var.dynamodb_table_name }, local.oxbow_lambda_unwrap_sns_event)
+    DYNAMO_LOCK_TABLE_NAME = var.dynamodb_table_name }, local.oxbow_lambda_unwrap_sns_event, local.oxbow_lambda_schema_evolution)
   }
   tags = var.tags
 }
