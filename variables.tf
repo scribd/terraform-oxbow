@@ -304,6 +304,12 @@ variable "enable_glue_create" {
   default     = false
 }
 
+variable "enable_schema_evolution" {
+  type        = bool
+  description = "Whether to turn on schema evolution"
+  default     = true
+}
+
 variable "glue_create_config" {
   type = object({
     athena_workgroup_name = string // Name of AWS Athena workgroup
