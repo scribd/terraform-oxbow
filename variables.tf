@@ -327,3 +327,9 @@ variable "glue_create_config" {
   })
   description = "Configuration of glue-create lambda"
 }
+
+variable "enable_glue_sync" {
+  type        = bool
+  description = "Whether to turn on Glue create Lambda"
+  default     = false
+}
