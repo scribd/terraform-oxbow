@@ -58,7 +58,7 @@ resource "aws_sqs_queue" "glue_sync_dl" {
   tags   = var.tags
 }
 
-resource "aws_sqs_queue_redrive_allow_policy" "terraform_queue_redrive_allow_policy" {
+resource "aws_sqs_queue_redrive_allow_policy" "glue_syncredrive_allow_policy" {
   count = local.enable_glue_sync ? 1 : 0
 
   queue_url = aws_sqs_queue.glue_sync_dl[0].id
