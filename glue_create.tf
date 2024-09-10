@@ -252,7 +252,8 @@ resource "aws_lambda_function" "glue_create_lambda" {
   role          = aws_iam_role.glue_create[0].arn
   handler       = "provided"
   runtime       = "provided.al2"
-
+  memory_size   = 1024
+  timeout       = 120
   environment {
     variables = {
       RUST_LOG            = var.rust_log_oxbow_debug_level
