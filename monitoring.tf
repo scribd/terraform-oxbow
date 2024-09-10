@@ -10,7 +10,7 @@ locals {
 }
 
 resource "datadog_monitor" "dead_letters_monitor" {
-  for_each = toset(local.dlq_to_monitor) && local.enable_dead_letters_monitoring
+  for_each = local.enable_dead_letters_monitoring ? toset(local.dlq_to_monitor) : []
 
   type = "metric alert"
   name = "${each.key}-monitor"
