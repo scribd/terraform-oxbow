@@ -1,7 +1,7 @@
 
 # glue-create lambda resource
 module "glue_create_athena_workgroup_bucket" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   source                   = "terraform-aws-modules/s3-bucket/aws"
   version                  = "4.1.2"
@@ -19,7 +19,7 @@ module "glue_create_athena_workgroup_bucket" {
 }
 
 resource "aws_athena_workgroup" "glue_create" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   name = var.glue_create_config.athena_workgroup_name
   tags = var.tags
@@ -35,7 +35,7 @@ resource "aws_athena_workgroup" "glue_create" {
 }
 
 data "aws_iam_policy_document" "glue_create_sqs" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   statement {
     effect = "Allow"
@@ -54,7 +54,7 @@ data "aws_iam_policy_document" "glue_create_sqs" {
 }
 
 data "aws_iam_policy_document" "glue_create_sqs_dl" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   statement {
     effect = "Allow"
@@ -73,7 +73,7 @@ data "aws_iam_policy_document" "glue_create_sqs_dl" {
 }
 
 resource "aws_sqs_queue" "glue_create" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   name                       = var.glue_create_config.sqs_queue_name
   policy                     = data.aws_iam_policy_document.glue_create_sqs[0].json
@@ -87,7 +87,7 @@ resource "aws_sqs_queue" "glue_create" {
 }
 
 resource "aws_sqs_queue" "glue_create_dl" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   name   = var.glue_create_config.sqs_queue_name_dl
   policy = data.aws_iam_policy_document.glue_create_sqs_dl[0].json
@@ -95,7 +95,7 @@ resource "aws_sqs_queue" "glue_create_dl" {
 }
 
 resource "aws_sqs_queue_redrive_allow_policy" "terraform_queue_redrive_allow_policy" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   queue_url = aws_sqs_queue.glue_create_dl[0].id
   redrive_allow_policy = jsonencode({
@@ -105,7 +105,7 @@ resource "aws_sqs_queue_redrive_allow_policy" "terraform_queue_redrive_allow_pol
 }
 
 resource "aws_sns_topic_subscription" "glue_create_sns_sub" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   topic_arn = var.glue_create_config.sns_topic_arn
   protocol  = "sqs"
@@ -113,7 +113,7 @@ resource "aws_sns_topic_subscription" "glue_create_sns_sub" {
 }
 
 data "aws_iam_policy_document" "glue_create_assume" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   statement {
     effect = "Allow"
@@ -128,7 +128,7 @@ data "aws_iam_policy_document" "glue_create_assume" {
 }
 
 data "aws_iam_policy_document" "glue_create" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   statement {
     sid = "AthenaWorkgroupAthenaRW"
@@ -225,7 +225,7 @@ data "aws_iam_policy_document" "glue_create" {
 }
 
 resource "aws_iam_policy" "glue_create_managed" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   name        = var.glue_create_config.iam_policy_name
   description = "Glue create policy allows access to Athena and S3"
@@ -234,7 +234,7 @@ resource "aws_iam_policy" "glue_create_managed" {
 }
 
 resource "aws_iam_role" "glue_create" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   name                = var.glue_create_config.iam_role_name
   assume_role_policy  = data.aws_iam_policy_document.glue_create_assume[0].json
@@ -243,7 +243,7 @@ resource "aws_iam_role" "glue_create" {
 }
 
 resource "aws_lambda_function" "glue_create_lambda" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   description   = "Greate tables in AWS Glue catalog based on the table prefix"
   s3_key        = var.glue_create_config.lambda_s3_key
@@ -266,7 +266,7 @@ resource "aws_lambda_function" "glue_create_lambda" {
 }
 
 resource "aws_lambda_event_source_mapping" "glue_create" {
-  count = local.enable_glue_create ? 1 : 0
+  count = var.enable_glue_create ? 1 : 0
 
   event_source_arn = aws_sqs_queue.glue_create[0].arn
   function_name    = aws_lambda_function.glue_create_lambda[0].arn

@@ -8,7 +8,6 @@ locals {
   enable_kinesis_firehose_delivery_stream = var.enable_kinesis_firehose_delivery_stream
   enable_bucket_notification              = var.enable_bucket_notification
   enable_group_events                     = var.enable_group_events
-  enable_glue_create                      = var.enable_glue_create
 }
 
 

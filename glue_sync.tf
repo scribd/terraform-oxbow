@@ -1,5 +1,5 @@
 data "aws_iam_policy_document" "glue_sync_sqs" {
-  count = local.enable_glue_sync ? 1 : 0
+  count = var.enable_glue_sync ? 1 : 0
 
   statement {
     effect = "Allow"
@@ -18,7 +18,7 @@ data "aws_iam_policy_document" "glue_sync_sqs" {
 }
 
 data "aws_iam_policy_document" "glue_sync_sqs_dl" {
-  count = local.enable_glue_sync ? 1 : 0
+  count = var.enable_glue_sync ? 1 : 0
 
   statement {
     effect = "Allow"
@@ -37,7 +37,7 @@ data "aws_iam_policy_document" "glue_sync_sqs_dl" {
 }
 
 resource "aws_sqs_queue" "glue_sync" {
-  count = local.enable_glue_sync ? 1 : 0
+  count = var.enable_glue_sync ? 1 : 0
 
   name                       = var.glue_sync_config.sqs_queue_name
   policy                     = data.aws_iam_policy_document.glue_sync_sqs[0].json
@@ -51,7 +51,7 @@ resource "aws_sqs_queue" "glue_sync" {
 }
 
 resource "aws_sqs_queue" "glue_sync_dl" {
-  count = local.enable_glue_sync ? 1 : 0
+  count = var.enable_glue_sync ? 1 : 0
 
   name   = var.glue_sync_config.sqs_queue_name_dl
   policy = data.aws_iam_policy_document.glue_sync_sqs_dl[0].json
@@ -59,7 +59,7 @@ resource "aws_sqs_queue" "glue_sync_dl" {
 }
 
 resource "aws_sqs_queue_redrive_allow_policy" "glue_syncredrive_allow_policy" {
-  count = local.enable_glue_sync ? 1 : 0
+  count = var.enable_glue_sync ? 1 : 0
 
   queue_url = aws_sqs_queue.glue_sync_dl[0].id
   redrive_allow_policy = jsonencode({
@@ -69,7 +69,7 @@ resource "aws_sqs_queue_redrive_allow_policy" "glue_syncredrive_allow_policy" {
 }
 
 resource "aws_sns_topic_subscription" "glue_sync_sns_sub" {
-  count = local.enable_glue_sync ? 1 : 0
+  count = var.enable_glue_sync ? 1 : 0
 
   topic_arn = var.glue_sync_config.sns_topic_arn
   protocol  = "sqs"
@@ -77,7 +77,7 @@ resource "aws_sns_topic_subscription" "glue_sync_sns_sub" {
 }
 
 data "aws_iam_policy_document" "glue_sync_assume" {
-  count = local.enable_glue_sync ? 1 : 0
+  count = var.enable_glue_sync ? 1 : 0
 
   statement {
     effect = "Allow"
@@ -92,7 +92,7 @@ data "aws_iam_policy_document" "glue_sync_assume" {
 }
 
 data "aws_iam_policy_document" "glue_sync" {
-  count = local.enable_glue_sync ? 1 : 0
+  count = var.enable_glue_sync ? 1 : 0
   statement {
     sid    = "GlueAllowTables"
     effect = "Allow"
@@ -154,7 +154,7 @@ data "aws_iam_policy_document" "glue_sync" {
 }
 
 resource "aws_iam_policy" "glue_sync_managed" {
-  count = local.enable_glue_sync ? 1 : 0
+  count = var.enable_glue_sync ? 1 : 0
 
   name        = var.glue_sync_config.iam_policy_name
   description = "Glue create policy allows access to Athena and S3"
@@ -163,7 +163,7 @@ resource "aws_iam_policy" "glue_sync_managed" {
 }
 
 resource "aws_iam_role" "glue_sync" {
-  count = local.enable_glue_sync ? 1 : 0
+  count = var.enable_glue_sync ? 1 : 0
 
   name                = var.glue_sync_config.iam_role_name
   assume_role_policy  = data.aws_iam_policy_document.glue_sync_assume[0].json
@@ -172,7 +172,7 @@ resource "aws_iam_role" "glue_sync" {
 }
 
 resource "aws_lambda_function" "glue_sync_lambda" {
-  count = local.enable_glue_sync ? 1 : 0
+  count = var.enable_glue_sync ? 1 : 0
 
   description   = "Greate tables in AWS Glue catalog based on the table prefix"
   s3_key        = var.glue_sync_config.lambda_s3_key
@@ -193,7 +193,7 @@ resource "aws_lambda_function" "glue_sync_lambda" {
 }
 
 resource "aws_lambda_event_source_mapping" "glue_sync" {
-  count = local.enable_glue_sync ? 1 : 0
+  count = var.enable_glue_sync ? 1 : 0
 
   event_source_arn = aws_sqs_queue.glue_sync[0].arn
   function_name    = aws_lambda_function.glue_sync_lambda[0].arn
