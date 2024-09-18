@@ -351,5 +351,6 @@ variable "glue_sync_config" {
 variable "create_dynamodb_table" {
   type        = bool
   description = "Whether to create_dynamodb_table"
+  default     = false
 }
 
