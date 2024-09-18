@@ -348,3 +348,9 @@ variable "glue_sync_config" {
   })
   description = "Configuration of glue-sync lambda"
 }
+variable "create_dynamodb_table" {
+  type        = bool
+  description = "Whether to create_dynamodb_table"
+  default     = false
+}
+
