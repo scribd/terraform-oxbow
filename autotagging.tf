@@ -187,8 +187,7 @@ data "aws_iam_policy_document" "auto_tagging_lambda" {
     actions = [
       "dynamodb:*",
     ]
-    resources = [
-      aws_dynamodb_table.this_oxbow_locking.arn
+    resources = [var.create_dynamodb_table ? aws_dynamodb_table.this_oxbow_locking[0].arn : "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_name}"
     ]
   }
   statement {

@@ -340,7 +340,7 @@ resource "aws_iam_policy" "this_lambda_permissions" {
     Statement = [
       {
         Action   = ["dynamodb:*"]
-        Resource = aws_dynamodb_table.this_oxbow_locking.arn
+        Resource = var.create_dynamodb_table ? aws_dynamodb_table.this_oxbow_locking[0].arn : "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_name}"
         Effect   = "Allow"
       },
       {
@@ -522,6 +522,7 @@ resource "aws_iam_role" "this_iam_role_lambda_kinesis" {
 # The DynamoDb table is used for providing safe concurrent writes to delta
 # tables.
 resource "aws_dynamodb_table" "this_oxbow_locking" {
+  count        = var.create_dynamodb_table ? 1 : 0
   name         = var.dynamodb_table_name
   billing_mode = "PAY_PER_REQUEST"
   # Default name of the partition key hard-coded in delta-rs
