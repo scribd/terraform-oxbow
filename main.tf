@@ -102,7 +102,9 @@ resource "aws_lambda_function" "this_lambda" {
     variables = merge({
       AWS_S3_LOCKING_PROVIDER = var.aws_s3_locking_provider
       RUST_LOG                = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
-    DYNAMO_LOCK_TABLE_NAME = var.dynamodb_table_name }, local.oxbow_lambda_unwrap_sns_event, local.oxbow_lambda_schema_evolution)
+      DELTA_DYNAMO_TABLE_NAME = var.dynamodb_table_name },
+      local.oxbow_lambda_unwrap_sns_event, local.oxbow_lambda_schema_evolution
+    )
   }
   tags = var.tags
 }
