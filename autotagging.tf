@@ -187,7 +187,7 @@ data "aws_iam_policy_document" "auto_tagging_lambda" {
     actions = [
       "dynamodb:*",
     ]
-    Resource = [aws_dynamodb_table.this_oxbow_locking.arn, "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.logstore_dynamodb_table_name}"]
+    resources = [aws_dynamodb_table.this_oxbow_locking.arn, "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.logstore_dynamodb_table_name}"]
   }
   statement {
     sid = "s3"

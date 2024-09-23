@@ -526,7 +526,6 @@ resource "aws_iam_role" "this_iam_role_lambda_kinesis" {
 # The DynamoDb table is used for providing safe concurrent writes to delta
 # tables.
 resource "aws_dynamodb_table" "this_oxbow_locking" {
-  count        = var.create_dynamodb_table ? 1 : 0
   name         = var.dynamodb_table_name
   billing_mode = "PAY_PER_REQUEST"
   # Default name of the partition key hard-coded in delta-rs
