@@ -163,6 +163,12 @@ variable "dynamodb_table_name" {
   description = "Dynamodb table name"
 }
 
+variable "logstore_dynamodb_table_name" {
+  type        = string
+  default     = ""
+  description = "Dynamodb table name"
+}
+
 variable "sqs_queue_name" {
   type        = string
   description = "Sqs queue name"
@@ -348,9 +354,3 @@ variable "glue_sync_config" {
   })
   description = "Configuration of glue-sync lambda"
 }
-variable "create_dynamodb_table" {
-  type        = bool
-  description = "Whether to create_dynamodb_table"
-  default     = false
-}
-

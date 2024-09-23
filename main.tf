@@ -102,7 +102,9 @@ resource "aws_lambda_function" "this_lambda" {
     variables = merge({
       AWS_S3_LOCKING_PROVIDER = var.aws_s3_locking_provider
       RUST_LOG                = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
-      DELTA_DYNAMO_TABLE_NAME = var.dynamodb_table_name },
+      DYNAMO_LOCK_TABLE_NAME  = var.dynamodb_table_name
+      DELTA_DYNAMO_TABLE_NAME = var.logstore_dynamodb_table_name
+      },
       local.oxbow_lambda_unwrap_sns_event, local.oxbow_lambda_schema_evolution
     )
   }
@@ -342,7 +344,7 @@ resource "aws_iam_policy" "this_lambda_permissions" {
     Statement = [
       {
         Action   = ["dynamodb:*"]
-        Resource = var.create_dynamodb_table ? aws_dynamodb_table.this_oxbow_locking[0].arn : "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_name}"
+        Resource = [aws_dynamodb_table.this_oxbow_locking.arn, "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.logstore_dynamodb_table_name}"]
         Effect   = "Allow"
       },
       {
