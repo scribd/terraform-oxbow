@@ -354,4 +354,3 @@ variable "glue_sync_config" {
   })
   description = "Configuration of glue-sync lambda"
 }
-
