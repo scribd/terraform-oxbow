@@ -354,3 +354,13 @@ variable "glue_sync_config" {
   })
   description = "Configuration of glue-sync lambda"
 }
+
+variable "group_event_lambda_batch_size" {
+  description = "describe your variable"
+  default     = 10
+}
+
+variable "group_event_lambda_maximum_batching_window_in_seconds" {
+  description = "describe your variable"
+  default     = 1
+}

@@ -195,10 +195,11 @@ resource "aws_sqs_queue" "oxbow_lambda_fifo_sqs_dlq" {
 }
 
 resource "aws_lambda_event_source_mapping" "group_events_lambda_sqs_trigger" {
-  count            = local.enable_group_events ? 1 : 0
-  event_source_arn = aws_sqs_queue.group_events_lambda_sqs[0].arn
-  function_name    = aws_lambda_function.group_events_lambda[0].arn
-
+  count                              = local.enable_group_events ? 1 : 0
+  event_source_arn                   = aws_sqs_queue.group_events_lambda_sqs[0].arn
+  function_name                      = aws_lambda_function.group_events_lambda[0].arn
+  batch_size                         = var.group_event_lambda_batch_size
+  maximum_batching_window_in_seconds = var.maximum_batching_window_in_seconds
 }
 
 
