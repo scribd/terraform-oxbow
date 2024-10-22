@@ -199,7 +199,7 @@ resource "aws_lambda_event_source_mapping" "group_events_lambda_sqs_trigger" {
   event_source_arn                   = aws_sqs_queue.group_events_lambda_sqs[0].arn
   function_name                      = aws_lambda_function.group_events_lambda[0].arn
   batch_size                         = var.group_event_lambda_batch_size
-  maximum_batching_window_in_seconds = var.maximum_batching_window_in_seconds
+  maximum_batching_window_in_seconds = var.group_event_lambda_maximum_batching_window_in_seconds
 }
 
 
