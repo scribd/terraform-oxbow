@@ -181,8 +181,8 @@ resource "aws_lambda_function" "glue_sync_lambda" {
   role          = aws_iam_role.glue_sync[0].arn
   handler       = "provided"
   runtime       = "provided.al2"
-  memory_size   = 1024
-  timeout       = 120
+  memory_size   = var.lambda_memory_size
+  timeout       = var.lambda_timeout
   environment {
     variables = {
       RUST_LOG            = var.rust_log_oxbow_debug_level
