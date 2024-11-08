@@ -250,6 +250,11 @@ variable "dl_alert_recipients" {
   description = "List of the alert recipients"
 }
 
+variable "dl_alert_message" {
+  type    = string
+  default = ""
+}
+
 variable "dl_warning" {
   type        = number
   default     = 0
