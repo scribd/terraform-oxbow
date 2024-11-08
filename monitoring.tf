@@ -22,10 +22,9 @@ resource "datadog_monitor" "dead_letters_monitor" {
   query = "avg(last_1h):avg:aws.sqs.approximate_number_of_messages_visible{queuename:${each.key}} > ${var.dl_critical}"
 
   monitor_thresholds {
-    warning           = local.dl_warning
-    warning_recovery  = local.dl_warning - 1
-    critical          = local.dl_critical
-    critical_recovery = local.dl_critical - 1
+    warning  = local.dl_warning
+    critical = local.dl_critical
+    ok       = local.dl_ok
   }
 
   notify_no_data    = false
