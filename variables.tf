@@ -256,17 +256,21 @@ variable "dl_alert_message" {
 }
 
 variable "dl_warning" {
-  type        = number
-  default     = 0
+  type        = any
+  default     = ""
   description = "Dead letters warning value"
 }
 
 variable "dl_critical" {
-  type        = number
-  default     = 0
+  type        = any
+  default     = ""
   description = "Dead letters critical value"
 }
-
+variable "dl_ok" {
+  type        = any
+  default     = ""
+  description = "Dead letters critical value"
+}
 variable "tags_monitoring" {
   type        = list(string)
   default     = []
