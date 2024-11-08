@@ -15,6 +15,7 @@ resource "datadog_monitor" "dead_letters_monitor" {
   type = "metric alert"
   name = "${each.key}-monitor"
   message = templatefile("${path.module}/templates/dl_monitor.tmpl", {
+    dl_alert_message        = var.dl_alert_message
     dead_letters_queue_name = each.key
     notify                  = join(", ", var.dl_alert_recipients)
   })
