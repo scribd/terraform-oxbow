@@ -87,12 +87,13 @@ locals {
 
 resource "aws_lambda_function" "this_lambda" {
   description   = var.lambda_description
+  architectures = var.architectures
   s3_key        = var.lambda_s3_key
   s3_bucket     = var.lambda_s3_bucket
   function_name = var.lambda_function_name
   role          = aws_iam_role.this_iam_role_lambda_kinesis.arn
   handler       = "provided"
-  runtime       = "provided.al2"
+  runtime       = "provided.al2023"
   memory_size   = var.lambda_memory_size
   # lets set 2 minutes
   timeout                        = var.lambda_timeout
@@ -113,13 +114,14 @@ resource "aws_lambda_function" "this_lambda" {
 #### This lambda is optional and used only when grouping of events is required
 resource "aws_lambda_function" "group_events_lambda" {
   count         = local.enable_group_events ? 1 : 0
+  architectures = var.architectures
   description   = "Group events for oxbow based on the table prefix"
   s3_key        = var.events_lambda_s3_key
   s3_bucket     = var.events_lambda_s3_bucket
   function_name = var.events_lambda_function_name
   role          = aws_iam_role.this_iam_role_lambda_kinesis.arn
   handler       = "provided"
-  runtime       = "provided.al2"
+  runtime       = "provided.al2023"
 
   environment {
     variables = merge({
