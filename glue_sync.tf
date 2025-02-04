@@ -172,15 +172,15 @@ resource "aws_iam_role" "glue_sync" {
 }
 
 resource "aws_lambda_function" "glue_sync_lambda" {
-  count = var.enable_glue_sync ? 1 : 0
-
+  count         = var.enable_glue_sync ? 1 : 0
+  architectures = var.architectures
   description   = "Greate tables in AWS Glue catalog based on the table prefix"
   s3_key        = var.glue_sync_config.lambda_s3_key
   s3_bucket     = var.glue_sync_config.lambda_s3_bucket
   function_name = var.glue_sync_config.lambda_function_name
   role          = aws_iam_role.glue_sync[0].arn
   handler       = "provided"
-  runtime       = "provided.al2"
+  runtime       = "provided.al2023"
   memory_size   = var.lambda_memory_size
   timeout       = var.lambda_timeout
   environment {
