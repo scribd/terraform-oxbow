@@ -1,6 +1,6 @@
 locals {
   dlq_to_monitor = [
-    local.enable_group_events ? var.sqs_fifo_DL_queue_name : var.sqs_queue_name_dl,
+    local.enable_group_events ? "${var.sqs_fifo_DL_queue_name}.fifo" : var.sqs_queue_name_dl,
     var.enable_glue_create ? var.glue_create_config.sqs_queue_name_dl : "",
     var.enable_glue_sync ? var.glue_sync_config.sqs_queue_name_dl : "",
   ]
