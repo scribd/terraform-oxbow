@@ -1,7 +1,4 @@
-output "kinesis_stream_arn" {
-  description = "Kinesis stream arn"
-  value       = local.enable_kinesis_firehose_delivery_stream ? aws_kinesis_firehose_delivery_stream.this_kinesis[0].arn : ""
-}
+
 
 output "lambda_arn" {
   description = "Lambda arn"
