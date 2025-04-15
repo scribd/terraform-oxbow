@@ -1,13 +1,12 @@
-# This module creates Kinesis Firehose service (optionally), SQS, lambda function OXBOW
+# This module creates SQS, lambda function OXBOW
 # to receive data and convert it into parquet then Delta log is added by Oxbow lambda
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
-  enable_aws_glue_catalog_table           = var.enable_aws_glue_catalog_table
-  enable_kinesis_firehose_delivery_stream = var.enable_kinesis_firehose_delivery_stream
-  enable_bucket_notification              = var.enable_bucket_notification
-  enable_group_events                     = var.enable_group_events
+  enable_aws_glue_catalog_table = var.enable_aws_glue_catalog_table
+  enable_bucket_notification    = var.enable_bucket_notification
+  enable_group_events           = var.enable_group_events
 }
 
 
@@ -41,43 +40,6 @@ resource "aws_glue_catalog_table" "this_glue_table" {
   }
 }
 
-resource "aws_kinesis_firehose_delivery_stream" "this_kinesis" {
-  count       = local.enable_kinesis_firehose_delivery_stream ? 1 : 0
-  name        = var.kinesis_delivery_stream_name
-  destination = "extended_s3"
-  extended_s3_configuration {
-    buffering_size      = 128
-    role_arn            = aws_iam_role.this_iam_role_lambda_kinesis.arn
-    bucket_arn          = var.warehouse_bucket_arn
-    error_output_prefix = var.kinesis_s3_errors_prefix
-    prefix              = var.kinesis_s3_prefix
-
-    cloudwatch_logging_options {
-      enabled         = true
-      log_group_name  = "/aws/kinesisfirehose/${var.kinesis_delivery_stream_name}"
-      log_stream_name = "DestinationDelivery"
-    }
-    data_format_conversion_configuration {
-      input_format_configuration {
-        deserializer {
-          open_x_json_ser_de {}
-        }
-      }
-      output_format_configuration {
-        serializer {
-          parquet_ser_de {}
-        }
-      }
-      schema_configuration {
-        database_name = var.glue_database_name
-        role_arn      = aws_iam_role.this_iam_role_lambda_kinesis.arn
-        table_name    = var.glue_table_name
-        region        = "us-east-2"
-      }
-    }
-  }
-  tags = var.tags
-}
 locals {
   oxbow_lambda_unwrap_sns_event      = var.enable_group_events == true ? {} : var.sns_topic_arn == "" ? {} : { UNWRAP_SNS_ENVELOPE = true }
   group_eventlambda_unwrap_sns_event = var.sns_topic_arn == "" ? {} : { UNWRAP_SNS_ENVELOPE = true }
@@ -91,7 +53,7 @@ resource "aws_lambda_function" "this_lambda" {
   s3_key        = var.lambda_s3_key
   s3_bucket     = var.lambda_s3_bucket
   function_name = var.lambda_function_name
-  role          = aws_iam_role.this_iam_role_lambda_kinesis.arn
+  role          = aws_iam_role.oxbow_lambda_role.arn
   handler       = "provided"
   runtime       = "provided.al2023"
   memory_size   = var.lambda_memory_size
@@ -119,7 +81,7 @@ resource "aws_lambda_function" "group_events_lambda" {
   s3_key        = var.events_lambda_s3_key
   s3_bucket     = var.events_lambda_s3_bucket
   function_name = var.events_lambda_function_name
-  role          = aws_iam_role.this_iam_role_lambda_kinesis.arn
+  role          = aws_iam_role.oxbow_lambda_role.arn
   handler       = "provided"
   runtime       = "provided.al2023"
 
@@ -328,11 +290,8 @@ data "aws_iam_policy_document" "this_services_assume_role" {
   statement {
     effect = "Allow"
     principals {
-      type = "Service"
-      identifiers = concat(
-        ["lambda.amazonaws.com"],
-        local.enable_kinesis_firehose_delivery_stream ? ["firehose.amazonaws.com"] : []
-      )
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
     }
     actions = [
       "sts:AssumeRole",
@@ -462,67 +421,11 @@ data "aws_iam_policy_document" "this_dead_letter_queue_policy" {
   }
 }
 
+resource "aws_iam_role" "oxbow_lambda_role" {
+  name                = var.oxbow_lambda_role_name
+  assume_role_policy  = data.aws_iam_policy_document.this_services_assume_role.json
+  managed_policy_arns = [aws_iam_policy.this_lambda_permissions.arn]
 
-data "aws_iam_policy_document" "this_kinesis_policy_data" {
-  count = local.enable_kinesis_firehose_delivery_stream ? 1 : 0
-  statement {
-    sid    = "GlueAccess"
-    effect = "Allow"
-    actions = [
-      "glue:GetTable",
-      "glue:GetTableVersion",
-      "glue:GetTableVersions",
-    ]
-    resources = [
-      "arn:aws:glue:us-east-2:${data.aws_caller_identity.current.account_id}:catalog",
-      "arn:aws:glue:us-east-2:${data.aws_caller_identity.current.account_id}:database/${var.glue_database_name}",
-      "arn:aws:glue:us-east-2:${data.aws_caller_identity.current.account_id}:table/${var.glue_database_name}/${var.glue_table_name}"
-    ]
-  }
-  statement {
-    sid    = "S3Access"
-    effect = "Allow"
-    actions = [
-      "s3:AbortMultipartUpload",
-      "s3:GetBucketLocation",
-      "s3:GetObject",
-      "s3:ListBucket",
-      "s3:ListBucketMultipartUploads",
-      "s3:PutObject"
-    ]
-    resources = [
-      "${var.warehouse_bucket_arn}/${var.s3_path}",
-      "${var.warehouse_bucket_arn}/${var.s3_path}/*"
-    ]
-  }
-  statement {
-    sid    = "LogsAccess"
-    effect = "Allow"
-    actions = [
-      "logs:PutLogEvents"
-    ]
-    resources = [
-      "arn:aws:logs:us-east-2:${data.aws_caller_identity.current.account_id}:log-group:/aws/kinesisfirehose/${var.kinesis_delivery_stream_name}:log-stream:*"
-    ]
-  }
-}
-
-resource "aws_iam_policy" "this_kinesis_policy" {
-  count       = local.enable_kinesis_firehose_delivery_stream ? 1 : 0
-  name        = var.kinesis_policy_name
-  description = var.kinesis_policy_description
-  policy      = data.aws_iam_policy_document.this_kinesis_policy_data[0].json
-  tags        = var.tags
-}
-
-
-resource "aws_iam_role" "this_iam_role_lambda_kinesis" {
-  name               = var.lambda_kinesis_role_name
-  assume_role_policy = data.aws_iam_policy_document.this_services_assume_role.json
-  managed_policy_arns = concat(
-    local.enable_kinesis_firehose_delivery_stream ? [aws_iam_policy.this_kinesis_policy[0].arn] : [],
-    [aws_iam_policy.this_lambda_permissions.arn]
-  )
   tags = var.tags
 }
 

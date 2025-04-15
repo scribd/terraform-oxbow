@@ -28,18 +28,6 @@ variable "parquet_schema" {
   default     = []
 }
 
-variable "kinesis_s3_prefix" {
-  default     = ""
-  type        = string
-  description = "Kinesis s3 prefix - s3 location where the files will be output"
-}
-
-variable "kinesis_delivery_stream_name" {
-  type        = string
-  default     = ""
-  description = "Kinesis delivery stream name"
-}
-
 variable "warehouse_bucket_arn" {
   type        = string
   description = "Warehouse bucket arn"
@@ -48,12 +36,6 @@ variable "warehouse_bucket_arn" {
 variable "warehouse_bucket_name" {
   type        = string
   description = "Warehouse bucket name"
-}
-
-variable "kinesis_s3_errors_prefix" {
-  type        = string
-  default     = ""
-  description = "Kinesiss3 errors prefix - s3 location where the files will be output"
 }
 
 variable "lambda_function_name" {
@@ -128,18 +110,6 @@ variable "lambda_reserved_concurrent_executions" {
   type        = number
   description = "Lambda reserved concurrent executions"
   default     = 1
-}
-
-variable "kinesis_policy_name" {
-  type        = string
-  default     = ""
-  description = "Kinesis policy name"
-}
-
-variable "kinesis_policy_description" {
-  type        = string
-  description = "Kinesis policy description"
-  default     = ""
 }
 
 variable "rust_log_deltalake_debug_level" {
@@ -221,9 +191,9 @@ variable "sqs_queue_name_dl" {
   description = "Sqs queue name - dead letters"
 }
 
-variable "lambda_kinesis_role_name" {
+variable "oxbow_lambda_role_name" {
   type        = string
-  description = "Lambda kinesis IAM role name"
+  description = "Lambda oxbow IAM role name"
 }
 
 variable "tags" {
@@ -280,12 +250,6 @@ variable "tags_monitoring" {
 variable "enable_aws_glue_catalog_table" {
   type        = bool
   description = "Enable glue catalog table"
-  default     = false
-}
-
-variable "enable_kinesis_firehose_delivery_stream" {
-  type        = bool
-  description = "Enable firehose delivery stream"
   default     = false
 }
 

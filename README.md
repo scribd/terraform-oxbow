@@ -2,23 +2,19 @@
 *Terraform module to manage oxbow Lambda and its components.
 We can have the following components in AWS:
 1. Lambda
-2. Kinesis Data Firehose
-3. SQS 
-4. SQS dead letters
-5. IAM policy
-6. S3 bucket notifications
-7. Dynamo DB table
-8. Glue catalog
-9. Glue table
+2. SQS 
+3. SQS dead letters
+4. IAM policy
+5. S3 bucket notifications
+6. Dynamo DB table
+7. Glue catalog
+8. Glue table
 
 ### examples:
 if we need Glue catalog and table
 ```
 enable_aws_glue_catalog_table = true
-```
-if we need Kinesis Data Firehose delivery stream 
-```
-enable_kinesis_firehose_delivery_stream = true
+
 ```
 if we need s3 bucket notification 
 ```
@@ -35,7 +31,6 @@ module "terraform-oxbow" {
   source = ""
 
   enable_aws_glue_catalog_table           = true
-  enable_kinesis_firehose_delivery_stream = true
   enable_bucket_notification              = false
 
 
@@ -46,8 +41,6 @@ module "terraform-oxbow" {
 
   # the place where we store files
   s3_path = ""
-
-  lambda_kinesis_role_name        = ""
   lambda_function_name            = ""
   lambda_description              = ""
   lambda_s3_key                   = ""
@@ -60,20 +53,10 @@ module "terraform-oxbow" {
   sqs_queue_name      = "${var.env}--queue"
   sqs_queue_name_dl   = "${var.env}--queue-dl"
   dynamodb_table_name = "${var.env}-oxbow-lock"
-
-  kinesis_delivery_stream_name = ""
-  kinesis_s3_prefix            = ""
-  kinesis_s3_errors_prefix     = ""
-  kinesis_policy_name          = ""
-  kinesis_policy_description   = ""
-
-  # We have dedicated service Database for Kinesis file conversions
   glue_database_name     = ""
   glue_table_name        = ""
   glue_location_uri      = ""
   glue_table_description = ""
-  # this schema is required by Kinesis to convert input into Parquet
-  parquet_schema = ["parquet_schema]
   aws_s3_locking_provider = "dynamodb"
 
   enabled_dead_letters_monitoring = true

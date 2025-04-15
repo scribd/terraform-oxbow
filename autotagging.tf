@@ -164,7 +164,7 @@ data "aws_iam_policy_document" "auto_tagging_assume_role" {
 resource "aws_iam_role" "auto_tagging_lambda" {
   count = var.enable_auto_tagging == true ? 1 : 0
 
-  name                = "${var.lambda_kinesis_role_name}-auto_tagging"
+  name                = "${var.oxbow_lambda_role_name}-auto_tagging"
   assume_role_policy  = data.aws_iam_policy_document.auto_tagging_assume_role[0].json
   managed_policy_arns = [aws_iam_policy.auto_tagging_lambda[0].arn]
 
