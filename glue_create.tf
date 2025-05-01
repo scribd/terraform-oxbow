@@ -73,8 +73,8 @@ data "aws_iam_policy_document" "glue_create_sqs_dl" {
 }
 
 resource "aws_sqs_queue" "glue_create" {
-  count = var.enable_glue_create ? 1 : 0
-
+  count                      = var.enable_glue_create ? 1 : 0
+  message_retention_seconds  = var.message_retention_seconds
   name                       = var.glue_create_config.sqs_queue_name
   policy                     = data.aws_iam_policy_document.glue_create_sqs[0].json
   visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
@@ -87,11 +87,11 @@ resource "aws_sqs_queue" "glue_create" {
 }
 
 resource "aws_sqs_queue" "glue_create_dl" {
-  count = var.enable_glue_create ? 1 : 0
-
-  name   = var.glue_create_config.sqs_queue_name_dl
-  policy = data.aws_iam_policy_document.glue_create_sqs_dl[0].json
-  tags   = var.tags
+  count                     = var.enable_glue_create ? 1 : 0
+  message_retention_seconds = var.message_retention_seconds
+  name                      = var.glue_create_config.sqs_queue_name_dl
+  policy                    = data.aws_iam_policy_document.glue_create_sqs_dl[0].json
+  tags                      = var.tags
 }
 
 resource "aws_sqs_queue_redrive_allow_policy" "terraform_queue_redrive_allow_policy" {

@@ -37,8 +37,8 @@ data "aws_iam_policy_document" "glue_sync_sqs_dl" {
 }
 
 resource "aws_sqs_queue" "glue_sync" {
-  count = var.enable_glue_sync ? 1 : 0
-
+  count                      = var.enable_glue_sync ? 1 : 0
+  message_retention_seconds  = var.message_retention_seconds
   name                       = var.glue_sync_config.sqs_queue_name
   policy                     = data.aws_iam_policy_document.glue_sync_sqs[0].json
   visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
@@ -51,11 +51,11 @@ resource "aws_sqs_queue" "glue_sync" {
 }
 
 resource "aws_sqs_queue" "glue_sync_dl" {
-  count = var.enable_glue_sync ? 1 : 0
-
-  name   = var.glue_sync_config.sqs_queue_name_dl
-  policy = data.aws_iam_policy_document.glue_sync_sqs_dl[0].json
-  tags   = var.tags
+  count                     = var.enable_glue_sync ? 1 : 0
+  message_retention_seconds = var.message_retention_seconds
+  name                      = var.glue_sync_config.sqs_queue_name_dl
+  policy                    = data.aws_iam_policy_document.glue_sync_sqs_dl[0].json
+  tags                      = var.tags
 }
 
 resource "aws_sqs_queue_redrive_allow_policy" "glue_syncredrive_allow_policy" {

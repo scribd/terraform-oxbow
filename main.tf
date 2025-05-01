@@ -141,6 +141,7 @@ resource "aws_sqs_queue" "oxbow_lambda_fifo_sqs" {
   policy                      = data.aws_iam_policy_document.oxbow_lambda_fifo_sqs[0].json
   visibility_timeout_seconds  = var.sqs_visibility_timeout_seconds
   delay_seconds               = var.sqs_delay_seconds
+  message_retention_seconds   = var.message_retention_seconds
   content_based_deduplication = true
   fifo_queue                  = true
   tags                        = var.tags
@@ -151,11 +152,12 @@ resource "aws_sqs_queue" "oxbow_lambda_fifo_sqs" {
 }
 
 resource "aws_sqs_queue" "oxbow_lambda_fifo_sqs_dlq" {
-  count      = local.enable_group_events ? 1 : 0
-  name       = "${var.sqs_fifo_DL_queue_name}.fifo"
-  policy     = data.aws_iam_policy_document.oxbow_lambda_fifo_sqs_dlq[0].json
-  fifo_queue = true
-  tags       = var.tags
+  count                     = local.enable_group_events ? 1 : 0
+  name                      = "${var.sqs_fifo_DL_queue_name}.fifo"
+  message_retention_seconds = var.message_retention_seconds
+  policy                    = data.aws_iam_policy_document.oxbow_lambda_fifo_sqs_dlq[0].json
+  fifo_queue                = true
+  tags                      = var.tags
 }
 
 resource "aws_lambda_event_source_mapping" "group_events_lambda_sqs_trigger" {
@@ -210,6 +212,7 @@ data "aws_iam_policy_document" "group_event_lambda_sqs_dlq" {
 resource "aws_sqs_queue" "group_events_lambda_sqs" {
   count                      = local.enable_group_events ? 1 : 0
   name                       = var.sqs_group_queue_name
+  message_retention_seconds  = var.message_retention_seconds
   policy                     = var.sns_topic_arn == "" ? data.aws_iam_policy_document.group_event_lambda_sqs[0].json : data.aws_iam_policy_document.this_sns_to_sqs[0].json
   visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
   delay_seconds              = var.sqs_delay_seconds
@@ -221,10 +224,11 @@ resource "aws_sqs_queue" "group_events_lambda_sqs" {
 }
 
 resource "aws_sqs_queue" "group_events_lambda_sqs_dlq" {
-  count  = local.enable_group_events ? 1 : 0
-  policy = data.aws_iam_policy_document.group_event_lambda_sqs_dlq[0].json
-  name   = var.sqs_group_DL_queue_name
-  tags   = var.tags
+  count                     = local.enable_group_events ? 1 : 0
+  message_retention_seconds = var.message_retention_seconds
+  policy                    = data.aws_iam_policy_document.group_event_lambda_sqs_dlq[0].json
+  name                      = var.sqs_group_DL_queue_name
+  tags                      = var.tags
 }
 
 
@@ -239,6 +243,7 @@ resource "aws_lambda_event_source_mapping" "this_lambda_events" {
 resource "aws_sqs_queue" "this_sqs" {
   count                      = local.enable_group_events ? 0 : 1
   name                       = var.sqs_queue_name
+  message_retention_seconds  = var.message_retention_seconds
   policy                     = var.sns_topic_arn == "" ? data.aws_iam_policy_document.this_sqs_queue_policy_data.json : data.aws_iam_policy_document.this_sns_to_sqs[0].json
   visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
   delay_seconds              = var.sqs_delay_seconds
@@ -250,10 +255,11 @@ resource "aws_sqs_queue" "this_sqs" {
 }
 
 resource "aws_sqs_queue" "this_DL" {
-  count  = local.enable_group_events ? 0 : 1
-  name   = var.sqs_queue_name_dl
-  policy = data.aws_iam_policy_document.this_dead_letter_queue_policy.json
-  tags   = var.tags
+  count                     = local.enable_group_events ? 0 : 1
+  message_retention_seconds = var.message_retention_seconds
+  name                      = var.sqs_queue_name_dl
+  policy                    = data.aws_iam_policy_document.this_dead_letter_queue_policy.json
+  tags                      = var.tags
 }
 
 resource "aws_sns_topic_subscription" "this_sns_sub" {
