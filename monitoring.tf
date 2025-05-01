@@ -1,8 +1,9 @@
 locals {
+  base_dlq_name = local.enable_group_events ? lower("${var.sqs_fifo_DL_queue_name}.fifo") : lower(var.sqs_queue_name_dl)
   dlq_to_monitor = [
-    local.enable_group_events ? lower("${var.sqs_fifo_DL_queue_name}.fifo") : lower(var.sqs_queue_name_dl),
-    var.enable_glue_create ? lower(var.glue_create_config.sqs_queue_name_dl) : "",
-    var.enable_glue_sync ? lower(var.glue_sync_config.sqs_queue_name_dl) : "",
+    local.base_dlq_name,
+    var.enable_glue_create ? lower(var.glue_create_config.sqs_queue_name_dl) : local.base_dlq_name,
+    var.enable_glue_sync ? lower(var.glue_sync_config.sqs_queue_name_dl) : local.base_dlq_name,
   ]
 }
 
