@@ -343,3 +343,8 @@ variable "architectures" {
   type        = list(string)
   default     = ["x86_64"]
 }
+
+variable "message_retention_seconds" {
+  type    = number
+  default = 1209600
+}

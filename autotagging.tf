@@ -1,17 +1,16 @@
 # This is the optional Autotagging feature.
 
 resource "aws_lambda_function" "auto_tagging" {
-  count         = var.enable_auto_tagging == true ? 1 : 0
-  architectures = var.architectures
-  description   = var.lambda_description
-  s3_key        = var.auto_tagging_s3_key
-  s3_bucket     = var.auto_tagging_s3_bucket
-  function_name = "${var.lambda_function_name}-auto_tagging"
-  role          = aws_iam_role.auto_tagging_lambda[0].arn
-  handler       = "provided"
-  runtime       = "provided.al2023"
-  memory_size   = var.lambda_memory_size
-  # lets set 2 minutes
+  count                          = var.enable_auto_tagging == true ? 1 : 0
+  architectures                  = var.architectures
+  description                    = var.lambda_description
+  s3_key                         = var.auto_tagging_s3_key
+  s3_bucket                      = var.auto_tagging_s3_bucket
+  function_name                  = "${var.lambda_function_name}-auto_tagging"
+  role                           = aws_iam_role.auto_tagging_lambda[0].arn
+  handler                        = "provided"
+  runtime                        = "provided.al2023"
+  memory_size                    = var.lambda_memory_size
   timeout                        = var.lambda_timeout
   reserved_concurrent_executions = var.lambda_reserved_concurrent_executions
 
