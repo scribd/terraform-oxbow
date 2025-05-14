@@ -105,11 +105,12 @@ resource "aws_sqs_queue_redrive_allow_policy" "terraform_queue_redrive_allow_pol
 }
 
 resource "aws_sns_topic_subscription" "glue_create_sns_sub" {
-  count = var.enable_glue_create ? 1 : 0
-
-  topic_arn = var.glue_create_config.sns_topic_arn
-  protocol  = "sqs"
-  endpoint  = aws_sqs_queue.glue_create[0].arn
+  count               = var.enable_glue_create ? 1 : 0
+  filter_policy       = var.glue_create_config.sns_subcription_filter_policy
+  filter_policy_scope = var.glue_create_config.filter_policy_scope
+  topic_arn           = var.glue_create_config.sns_topic_arn
+  protocol            = "sqs"
+  endpoint            = aws_sqs_queue.glue_create[0].arn
 }
 
 data "aws_iam_policy_document" "glue_create_assume" {
