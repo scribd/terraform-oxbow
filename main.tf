@@ -263,8 +263,7 @@ resource "aws_sqs_queue" "this_DL" {
 }
 
 resource "aws_sns_topic_subscription" "this_sns_sub" {
-  count = var.sns_topic_arn == "" ? 0 : 1
-
+  count     = var.sns_topic_arn == "" ? 0 : 1
   topic_arn = var.sns_topic_arn
   protocol  = "sqs"
   endpoint  = local.enable_group_events ? aws_sqs_queue.group_events_lambda_sqs[0].arn : aws_sqs_queue.this_sqs[0].arn

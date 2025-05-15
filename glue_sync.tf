@@ -69,11 +69,12 @@ resource "aws_sqs_queue_redrive_allow_policy" "glue_syncredrive_allow_policy" {
 }
 
 resource "aws_sns_topic_subscription" "glue_sync_sns_sub" {
-  count = var.enable_glue_sync ? 1 : 0
-
-  topic_arn = var.glue_sync_config.sns_topic_arn
-  protocol  = "sqs"
-  endpoint  = aws_sqs_queue.glue_sync[0].arn
+  count               = var.enable_glue_sync ? 1 : 0
+  filter_policy       = var.glue_sync_config.sns_subcription_filter_policy
+  filter_policy_scope = var.glue_sync_config.filter_policy_scope
+  topic_arn           = var.glue_sync_config.sns_topic_arn
+  protocol            = "sqs"
+  endpoint            = aws_sqs_queue.glue_sync[0].arn
 }
 
 data "aws_iam_policy_document" "glue_sync_assume" {

@@ -49,8 +49,7 @@ resource "aws_sqs_queue" "auto_tagging" {
 }
 
 resource "aws_sns_topic_subscription" "auto_tagging" {
-  count = var.enable_auto_tagging == true ? var.sns_topic_arn == "" ? 0 : 1 : 0
-
+  count     = var.enable_auto_tagging == true ? var.sns_topic_arn == "" ? 0 : 1 : 0
   topic_arn = var.sns_topic_arn
   protocol  = "sqs"
   endpoint  = aws_sqs_queue.auto_tagging[0].arn
