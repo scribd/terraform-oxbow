@@ -84,7 +84,7 @@ resource "aws_lambda_function" "group_events_lambda" {
   role          = aws_iam_role.oxbow_lambda_role.arn
   handler       = "provided"
   runtime       = "provided.al2023"
-
+  tags          = var.tags
   environment {
     variables = merge({
       RUST_LOG  = var.rust_log_oxbow_debug_level
