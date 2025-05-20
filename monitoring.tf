@@ -5,7 +5,7 @@ locals {
     var.enable_glue_create ? lower(var.glue_create_config.sqs_queue_name_dl) : local.base_dlq_name,
     var.enable_glue_sync ? lower(var.glue_sync_config.sqs_queue_name_dl) : local.base_dlq_name,
   ]
-  additional_query_conditions = length(var.monitoring_query_conditions) > 0 ? " ,${var.monitoring_query_conditions}" : ""
+  additional_query_conditions = length(var.monitoring_query_conditions) > 0 ? ", ${var.monitoring_query_conditions}" : ""
 }
 
 resource "datadog_monitor" "dead_letters_monitor" {
