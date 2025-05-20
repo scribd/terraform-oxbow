@@ -308,6 +308,9 @@ variable "glue_create_config" {
   })
   description = "Configuration of glue-create lambda"
   default = {
+    athena_workgroup_name         = ""
+    athena_data_source            = ""
+    athena_bucket_name            = ""
     lambda_s3_key                 = ""
     lambda_s3_bucket              = ""
     lambda_function_name          = ""
