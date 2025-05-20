@@ -247,6 +247,12 @@ variable "tags_monitoring" {
   description = "A list of tags to assign to the monitoring resource"
 }
 
+variable "monitoring_query_conditions" {
+  type        = string
+  description = "Monitoring query conditions a comma peratde key:value pair list"
+  default     = ""
+}
+
 variable "enable_aws_glue_catalog_table" {
   type        = bool
   description = "Enable glue catalog table"
