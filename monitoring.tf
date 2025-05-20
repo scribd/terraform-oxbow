@@ -5,7 +5,7 @@ locals {
     var.enable_glue_create ? lower(var.glue_create_config.sqs_queue_name_dl) : local.base_dlq_name,
     var.enable_glue_sync ? lower(var.glue_sync_config.sqs_queue_name_dl) : local.base_dlq_name,
   ]
-  additional_query_conditions = length(var.monitoring_query_conditions) > 0 ? ",${var.monitoring_query_conditions}" : ""
+  additional_query_conditions = length(var.monitoring_query_conditions) > 0 ? " ,${var.monitoring_query_conditions}" : ""
 }
 
 resource "datadog_monitor" "dead_letters_monitor" {
@@ -18,7 +18,7 @@ resource "datadog_monitor" "dead_letters_monitor" {
     dead_letters_queue_name = each.key
     notify                  = join(", ", var.dl_alert_recipients)
   })
-  query = "avg(last_1h):avg:aws.sqs.approximate_number_of_messages_visible{queuename:${each.key}${local.additional_query_conditions} > ${var.dl_critical}}"
+  query = "avg(last_1h):avg:aws.sqs.approximate_number_of_messages_visible{queuename:${each.key}${local.additional_query_conditions}} > ${var.dl_critical}"
 
   monitor_thresholds {
     warning  = var.dl_warning
