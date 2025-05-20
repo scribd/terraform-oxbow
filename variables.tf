@@ -307,6 +307,17 @@ variable "glue_create_config" {
     filter_policy_scope           = string // sns subcription filter policy scope
   })
   description = "Configuration of glue-create lambda"
+  default = {
+    lambda_s3_key        = ""
+    lambda_s3_bucket     = ""
+    lambda_function_name = ""
+    path_regex           = ""
+    sns_topic_arn        = ""
+    sqs_queue_name       = ""
+    sqs_queue_name_dl    = ""
+    iam_role_name        = ""
+    iam_policy_name      = ""
+  }
 }
 
 variable "enable_glue_sync" {
@@ -330,6 +341,17 @@ variable "glue_sync_config" {
     filter_policy_scope           = string // sns subcription filter policy scope
   })
   description = "Configuration of glue-sync lambda"
+  default = {
+    lambda_s3_key        = ""
+    lambda_s3_bucket     = ""
+    lambda_function_name = ""
+    path_regex           = ""
+    sns_topic_arn        = ""
+    sqs_queue_name       = ""
+    sqs_queue_name_dl    = ""
+    iam_role_name        = ""
+    iam_policy_name      = ""
+  }
 }
 
 variable "group_event_lambda_batch_size" {
