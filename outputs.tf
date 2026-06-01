@@ -19,3 +19,8 @@ output "autotag_lambda" {
   description = "Autotagging lambda Arn"
   value       = var.enable_auto_tagging == false ? "" : aws_lambda_function.auto_tagging[0].arn
 }
+
+output "dead_letters_monitor_ids" {
+  description = "IDs of the Datadog dead letter monitors"
+  value       = [for monitor in datadog_monitor.dead_letters_monitor : monitor.id]
+}
