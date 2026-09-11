@@ -37,9 +37,8 @@ mock_provider "aws" {
 mock_provider "datadog" {}
 
 variables {
-  warehouse_bucket_arn  = "arn:aws:s3:::scribdinc-data-lake-test"
-  warehouse_bucket_name = "scribdinc-data-lake-test"
-  s3_path               = "catalogs/bronze_monolith"
+  warehouse_bucket_arn = "arn:aws:s3:::scribdinc-data-lake-test"
+  s3_path              = "catalogs/bronze_monolith"
 
   lambda_function_name           = "test-oxbow"
   lambda_s3_bucket               = "test-artifacts"

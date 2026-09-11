@@ -52,7 +52,6 @@ module "oxbow" {
   source = "github.com/scribd/terraform-oxbow?ref=v2.0.0"
 
   warehouse_bucket_arn  = module.warehouse.s3_bucket_arn
-  warehouse_bucket_name = module.warehouse.s3_bucket_id
   s3_path               = "catalogs/bronze_monolith"
 
   lambda_function_name           = "${var.env}-oxbow"
@@ -112,6 +111,11 @@ outlives any single pipeline, so neither belongs to this module:
 - **The lock table and the logstore table.** Pass their names as
   `dynamodb_table_name` and `logstore_dynamodb_table_name`; both are required.
   delta-rs hard-codes `key` as the lock table's partition key.
+
+Of the bucket, the module needs only what its policies reference:
+`warehouse_bucket_arn` and `s3_path` scope every grant to `<bucket>/<s3_path>/*`,
+and `warehouse_bucket_account_id` fills the `aws:SourceAccount` conditions when
+the bucket lives in another account.
 
 UPGRADING.md has copy-pasteable resources for both.
 

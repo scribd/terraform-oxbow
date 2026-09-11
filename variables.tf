@@ -12,11 +12,6 @@ variable "warehouse_bucket_arn" {
   }
 }
 
-variable "warehouse_bucket_name" {
-  type        = string
-  description = "Warehouse bucket name"
-}
-
 variable "warehouse_bucket_account_id" {
   type        = string
   description = "Account that owns the warehouse bucket; defaults to this account. S3 bucket ARNs carry no account id, so a cross-account bucket must name its owner or the SourceAccount conditions reject its events."

@@ -276,6 +276,9 @@ Other input changes:
   into the monitor query, so a missing or non-numeric threshold used to produce
   a malformed monitor.
 - `dynamodb_table_name` and `logstore_dynamodb_table_name` are required.
+- `warehouse_bucket_name` is **removed**. Its only consumer was the bucket
+  notification this module no longer owns; nothing else referenced it. Drop it
+  from your module block.
 - `warehouse_bucket_account_id`, `manage_lambda_log_groups`,
   `cloudwatch_logs_retention_in_days`, `sqs_managed_sse_enabled` and
   `s3_notifies_ingest_queue` are new.
