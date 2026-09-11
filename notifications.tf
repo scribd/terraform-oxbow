@@ -4,14 +4,22 @@ resource "aws_sns_topic_subscription" "oxbow" {
   topic_arn = var.sns_topic_arn
   protocol  = "sqs"
   endpoint  = local.ingest_queue_arn
+
+  depends_on = [module.oxbow_queue, module.group_events_queue]
 }
 
+# Neither lambda is invoked by S3 in this module -- both are driven by an event
+# source mapping off their queue -- but consumers wire buckets straight at these
+# functions, so the permission stays. source_account closes the confused-deputy
+# hole: bucket names are global, so a same-named bucket in another account could
+# otherwise invoke.
 resource "aws_lambda_permission" "oxbow_from_s3" {
-  statement_id  = "AllowExecutionFromS3Bucket"
-  action        = "lambda:InvokeFunction"
-  function_name = module.oxbow_lambda.lambda_function_arn
-  principal     = "s3.amazonaws.com"
-  source_arn    = var.warehouse_bucket_arn
+  statement_id   = "AllowExecutionFromS3Bucket"
+  action         = "lambda:InvokeFunction"
+  function_name  = module.oxbow_lambda.lambda_function_arn
+  principal      = "s3.amazonaws.com"
+  source_arn     = var.warehouse_bucket_arn
+  source_account = local.warehouse_bucket_account_id
 }
 
 # S3 supports a single notification configuration per bucket, so a bucket whose
@@ -29,7 +37,9 @@ resource "aws_s3_bucket_notification" "warehouse" {
     filter_prefix = "${var.s3_path}/"
   }
 
-  depends_on = [aws_lambda_permission.oxbow_from_s3]
+  # S3 rejects a destination it cannot yet write to, and the queue policy is now
+  # a separate resource -- referencing queue_arn alone does not order against it.
+  depends_on = [module.oxbow_queue, module.group_events_queue]
 }
 
 resource "aws_glue_catalog_table" "oxbow" {

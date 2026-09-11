@@ -10,6 +10,10 @@ locals {
   group_events = var.enable_group_events
   from_sns     = var.sns_topic_arn != ""
 
+  # S3 bucket ARNs carry no account id, so a cross-account warehouse bucket has
+  # to name its owner explicitly or the SourceAccount conditions reject it.
+  warehouse_bucket_account_id = coalesce(var.warehouse_bucket_account_id, local.account_id)
+
   # Oxbow reads from the FIFO queue the group-events lambda feeds, or straight
   # from the standard queue when grouping is off. The queue S3 (or SNS)
   # delivers object-created events to is the group-events queue under grouping
@@ -30,6 +34,21 @@ locals {
 
   logstore_table_arn = "arn:${local.partition}:dynamodb:${local.region}:${local.account_id}:table/${var.logstore_dynamodb_table_name}"
 
+  # The set delta-rs documents for the DynamoDB locking provider, plus the
+  # DescribeTable its client issues on init. Deliberately no CreateTable: this
+  # module creates the lock table and the logstore table is an existing input.
+  # https://delta-io.github.io/delta-rs/usage/writing/writing-to-s3-with-locking-provider/
+  expected_dynamodb_actions = [
+    "dynamodb:GetItem",
+    "dynamodb:PutItem",
+    "dynamodb:UpdateItem",
+    "dynamodb:DeleteItem",
+    "dynamodb:Query",
+    "dynamodb:DescribeTable",
+  ]
+
+  delta_lock_table_arns = [aws_dynamodb_table.oxbow_locking.arn, local.logstore_table_arn]
+
   log_group_arn = "arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group"
 
   # Queues with no cross-service publisher need no resource policy at all, but
@@ -46,11 +65,22 @@ locals {
       effect     = "Deny"
       actions    = ["sqs:*"]
       principals = [{ type = "AWS", identifiers = ["*"] }]
-      condition = [{
-        test     = "StringNotEquals"
-        variable = "aws:PrincipalAccount"
-        values   = [local.account_id]
-      }]
+      condition = [
+        {
+          test     = "StringNotEquals"
+          variable = "aws:PrincipalAccount"
+          values   = [local.account_id]
+        },
+        # aws:PrincipalAccount is absent for a service principal, and
+        # StringNotEquals is true on an absent key, so without this the deny
+        # would also catch AWS acting on our behalf -- an operator draining a
+        # DLQ through SQS redrive, for one.
+        {
+          test     = "Bool"
+          variable = "aws:PrincipalIsAWSService"
+          values   = ["false"]
+        },
+      ]
     }
   }
 

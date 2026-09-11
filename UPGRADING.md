@@ -91,6 +91,35 @@ as inline attributes or did not have at all.
   affect S3 or SNS delivery. Set the variable to `false` to keep queues
   unencrypted.
 
+## Also fixed in the policy audit
+
+- **The S3 notification could race its own queue policy.** The queue policy is
+  now a separate resource, and referencing `queue_arn` does not order against
+  it. S3 rejects a destination it cannot yet write to, so a fresh apply could
+  fail with `Unable to validate the following destination configurations`. The
+  notification and the SNS subscriptions now depend on the queue modules.
+- **A deployment using both delivery paths dropped S3 events.** The queue policy
+  was `sns_topic_arn != "" ? sns_statement : s3_statement`, so setting a topic
+  *and* `enable_bucket_notification` admitted SNS only and S3 deliveries were
+  rejected silently. The statements are now additive.
+- **`aws:SourceAccount` assumed the bucket was local.** New
+  `warehouse_bucket_account_id` names the owner when the warehouse bucket lives
+  in another account; it defaults to the deploying account.
+- **The lambda invoke permissions had no `source_account`.** S3 bucket names are
+  global, so a same-named bucket in another account could invoke the functions.
+  Neither lambda is invoked by S3 *within* this module — both are driven by an
+  event source mapping — but the permissions are kept for consumers who wire a
+  bucket straight at the function.
+- **Enabling a stage without configuring it now fails at plan.** The
+  `glue_create_config` / `glue_sync_config` objects default to empty strings;
+  previously that surfaced partway through an apply as provider errors naming
+  neither the stage nor the missing field.
+- **`dynamodb:*` narrowed to the set delta-rs documents** plus `DescribeTable`.
+  `CreateTable` is deliberately absent: this module creates the lock table, and
+  the logstore table is an existing input. If you point
+  `logstore_dynamodb_table_name` at a table that does not exist, create it out
+  of band — the lambda can no longer create it for you.
+
 ## Fixed along the way
 
 - The auto-tagging DLQ policy named a bare queue name where an ARN was required,

@@ -12,6 +12,17 @@ variable "warehouse_bucket_arn" {
   }
 }
 
+variable "warehouse_bucket_account_id" {
+  type        = string
+  description = "Account that owns the warehouse bucket; defaults to this account. S3 bucket ARNs carry no account id, so a cross-account bucket must name its owner or the SourceAccount conditions reject its events."
+  default     = null
+
+  validation {
+    condition     = var.warehouse_bucket_account_id == null || can(regex("^[0-9]{12}$", var.warehouse_bucket_account_id))
+    error_message = "warehouse_bucket_account_id must be a 12-digit account id."
+  }
+}
+
 variable "warehouse_bucket_name" {
   type        = string
   description = "Warehouse bucket name"
@@ -215,6 +226,11 @@ variable "events_lambda_s3_key" {
   type        = string
   description = "S3 key of the group-events lambda package"
   default     = "events_lambda"
+
+  validation {
+    condition     = !var.enable_group_events || (var.events_lambda_s3_bucket != "" && var.events_lambda_s3_key != "" && var.events_lambda_function_name != "")
+    error_message = "enable_group_events requires events_lambda_s3_bucket, events_lambda_s3_key and events_lambda_function_name."
+  }
 }
 
 variable "group_event_lambda_batch_size" {
@@ -273,6 +289,11 @@ variable "auto_tagging_s3_key" {
   type        = string
   description = "S3 key of the auto-tagging lambda package"
   default     = ""
+
+  validation {
+    condition     = !var.enable_auto_tagging || (var.auto_tagging_s3_bucket != "" && var.auto_tagging_s3_key != "")
+    error_message = "enable_auto_tagging requires auto_tagging_s3_bucket and auto_tagging_s3_key."
+  }
 }
 
 ################################################################################
@@ -307,6 +328,11 @@ variable "glue_location_uri" {
   type        = string
   description = "S3 path backing the Glue service table"
   default     = ""
+
+  validation {
+    condition     = !var.enable_aws_glue_catalog_table || (var.glue_database_name != "" && var.glue_table_name != "" && var.glue_location_uri != "")
+    error_message = "enable_aws_glue_catalog_table requires glue_database_name, glue_table_name and glue_location_uri."
+  }
 }
 
 variable "parquet_schema" {
@@ -363,6 +389,29 @@ variable "glue_create_config" {
     sns_subcription_filter_policy = ""
     filter_policy_scope           = ""
   }
+
+  validation {
+    condition = !var.enable_glue_create || alltrue([
+      for f in [
+        var.glue_create_config.athena_workgroup_name,
+        var.glue_create_config.athena_bucket_name,
+        var.glue_create_config.lambda_s3_bucket,
+        var.glue_create_config.lambda_s3_key,
+        var.glue_create_config.lambda_function_name,
+        var.glue_create_config.sns_topic_arn,
+        var.glue_create_config.sqs_queue_name,
+        var.glue_create_config.sqs_queue_name_dl,
+        var.glue_create_config.iam_role_name,
+        var.glue_create_config.iam_policy_name,
+      ] : f != ""
+    ])
+    error_message = "enable_glue_create requires every glue_create_config field except path_regex, athena_data_source and the two SNS filter fields."
+  }
+
+  validation {
+    condition     = !var.enable_glue_create || length(var.glue_create_config.athena_bucket_name) <= 63
+    error_message = "glue_create_config.athena_bucket_name exceeds the 63-character S3 bucket limit."
+  }
 }
 
 variable "enable_glue_sync" {
@@ -398,6 +447,22 @@ variable "glue_sync_config" {
     iam_policy_name               = ""
     sns_subcription_filter_policy = ""
     filter_policy_scope           = ""
+  }
+
+  validation {
+    condition = !var.enable_glue_sync || alltrue([
+      for f in [
+        var.glue_sync_config.lambda_s3_bucket,
+        var.glue_sync_config.lambda_s3_key,
+        var.glue_sync_config.lambda_function_name,
+        var.glue_sync_config.sns_topic_arn,
+        var.glue_sync_config.sqs_queue_name,
+        var.glue_sync_config.sqs_queue_name_dl,
+        var.glue_sync_config.iam_role_name,
+        var.glue_sync_config.iam_policy_name,
+      ] : f != ""
+    ])
+    error_message = "enable_glue_sync requires every glue_sync_config field except path_regex and the two SNS filter fields."
   }
 }
 
@@ -449,6 +514,11 @@ variable "dl_critical" {
   type        = string
   description = "Dead letter monitor critical threshold"
   default     = null
+
+  validation {
+    condition     = var.dl_critical == null || can(tonumber(var.dl_critical))
+    error_message = "dl_critical is interpolated into the monitor query and must be numeric."
+  }
 }
 
 variable "dl_ok" {

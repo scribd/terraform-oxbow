@@ -82,11 +82,12 @@ resource "aws_sns_topic_subscription" "auto_tagging" {
 resource "aws_lambda_permission" "auto_tagging" {
   count = var.enable_auto_tagging ? 1 : 0
 
-  statement_id  = "AllowExecutionFromS3Bucket"
-  action        = "lambda:InvokeFunction"
-  function_name = module.auto_tagging_lambda[0].lambda_function_arn
-  principal     = "s3.amazonaws.com"
-  source_arn    = var.warehouse_bucket_arn
+  statement_id   = "AllowExecutionFromS3Bucket"
+  action         = "lambda:InvokeFunction"
+  function_name  = module.auto_tagging_lambda[0].lambda_function_arn
+  principal      = "s3.amazonaws.com"
+  source_arn     = var.warehouse_bucket_arn
+  source_account = local.warehouse_bucket_account_id
 }
 
 resource "aws_iam_policy" "auto_tagging" {
@@ -102,17 +103,10 @@ data "aws_iam_policy_document" "auto_tagging" {
   count = var.enable_auto_tagging ? 1 : 0
 
   statement {
-    sid    = "DeltaLockTables"
-    effect = "Allow"
-    actions = [
-      "dynamodb:GetItem",
-      "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:DeleteItem",
-      "dynamodb:Query",
-      "dynamodb:DescribeTable",
-    ]
-    resources = [aws_dynamodb_table.oxbow_locking.arn, local.logstore_table_arn]
+    sid       = "DeltaLockTables"
+    effect    = "Allow"
+    actions   = local.expected_dynamodb_actions
+    resources = local.delta_lock_table_arns
   }
 
   statement {

@@ -89,39 +89,45 @@ module "oxbow_queue" {
   tags = var.tags
 }
 
-# Publisher of the object-created events: the bucket when S3 notifies the queue
-# directly, the topic when events are fanned out through SNS.
+# Publishers of the object-created events. Both paths can be live at once --
+# the bucket notifying the queue directly while the queue is also subscribed to
+# a topic -- so these are additive, not either/or.
 locals {
-  ingest_queue_policy_statements = local.from_sns ? {
-    sns_send = {
-      effect     = "Allow"
-      actions    = ["sqs:SendMessage"]
-      principals = [{ type = "Service", identifiers = ["sns.amazonaws.com"] }]
-      condition = [{
-        test     = "ArnEquals"
-        variable = "aws:SourceArn"
-        values   = [var.sns_topic_arn]
-      }]
-    }
-    } : {
-    s3_send = {
-      effect     = "Allow"
-      actions    = ["sqs:SendMessage"]
-      principals = [{ type = "Service", identifiers = ["s3.amazonaws.com"] }]
-      condition = [
-        {
+  s3_publishes_to_ingest_queue = var.enable_bucket_notification || !local.from_sns
+
+  ingest_queue_policy_statements = merge(
+    local.s3_publishes_to_ingest_queue ? {
+      s3_send = {
+        effect     = "Allow"
+        actions    = ["sqs:SendMessage"]
+        principals = [{ type = "Service", identifiers = ["s3.amazonaws.com"] }]
+        condition = [
+          {
+            test     = "ArnEquals"
+            variable = "aws:SourceArn"
+            values   = [var.warehouse_bucket_arn]
+          },
+          {
+            test     = "StringEquals"
+            variable = "aws:SourceAccount"
+            values   = [local.warehouse_bucket_account_id]
+          },
+        ]
+      }
+    } : {},
+    local.from_sns ? {
+      sns_send = {
+        effect     = "Allow"
+        actions    = ["sqs:SendMessage"]
+        principals = [{ type = "Service", identifiers = ["sns.amazonaws.com"] }]
+        condition = [{
           test     = "ArnEquals"
           variable = "aws:SourceArn"
-          values   = [var.warehouse_bucket_arn]
-        },
-        {
-          test     = "StringEquals"
-          variable = "aws:SourceAccount"
-          values   = [local.account_id]
-        },
-      ]
-    }
-  }
+          values   = [var.sns_topic_arn]
+        }]
+      }
+    } : {},
+  )
 }
 
 resource "aws_iam_policy" "oxbow_lambda" {
@@ -133,17 +139,10 @@ resource "aws_iam_policy" "oxbow_lambda" {
 
 data "aws_iam_policy_document" "oxbow_lambda" {
   statement {
-    sid    = "DeltaLockTables"
-    effect = "Allow"
-    actions = [
-      "dynamodb:GetItem",
-      "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:DeleteItem",
-      "dynamodb:Query",
-      "dynamodb:DescribeTable",
-    ]
-    resources = [aws_dynamodb_table.oxbow_locking.arn, local.logstore_table_arn]
+    sid       = "DeltaLockTables"
+    effect    = "Allow"
+    actions   = local.expected_dynamodb_actions
+    resources = local.delta_lock_table_arns
   }
 
   statement {

@@ -170,6 +170,8 @@ data "aws_iam_policy_document" "glue_create" {
     ]
   }
 
+  # athena:ListWorkGroups is account-scoped and rejects a resource ARN, so "*"
+  # is the only form AWS accepts.
   statement {
     sid       = "AthenaListWorkgroups"
     effect    = "Allow"
