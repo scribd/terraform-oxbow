@@ -187,23 +187,6 @@ run "names_at_the_limit_are_accepted" {
 # Policy defects found while auditing the rewrite
 ################################################################################
 
-# The policy was `from_sns ? sns_statement : s3_statement`, so a deployment with
-# both a topic and a bucket notification admitted SNS only and S3 deliveries
-# were rejected with no visible error.
-run "both_delivery_paths_are_admitted_when_both_are_configured" {
-  command = plan
-
-  variables {
-    bucket_notification = {}
-    sns_delivery        = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
-  }
-
-  assert {
-    condition     = toset(keys(local.ingest_queue_policy_statements)) == toset(["s3_send", "sns_send"])
-    error_message = "Both publishers are live here, so both must be admitted"
-  }
-}
-
 run "sns_only_deployment_does_not_admit_s3" {
   command = plan
 
@@ -473,9 +456,9 @@ run "filter_policy_scope_without_a_policy_is_rejected" {
 # Publisher gating per queue
 ################################################################################
 
-# The gate asked "does this module own the bucket notification", not "does S3
-# publish here". With the notification owned elsewhere and a topic also set, the
-# ingest queue admitted SNS only and S3's deliveries were rejected silently.
+# This module never owns the bucket notification, so it cannot infer that S3 is
+# a publisher when a topic is also configured. Before the flag existed, that
+# combination admitted SNS only and S3's deliveries were rejected silently.
 run "external_bucket_notification_plus_sns_can_admit_both" {
   command = plan
 
@@ -503,7 +486,6 @@ run "the_override_can_also_withhold_the_s3_grant" {
   command = plan
 
   variables {
-    bucket_notification      = {}
     s3_notifies_ingest_queue = false
   }
 
@@ -519,7 +501,6 @@ run "auto_tagging_queue_has_no_unexercised_s3_grant" {
   command = plan
 
   variables {
-    bucket_notification = {}
     auto_tagging = {
       lambda_s3_bucket = "test-artifacts"
       lambda_s3_key    = "auto-tagging/auto-tagging.zip"

@@ -53,18 +53,8 @@ moved {
 }
 
 moved {
-  from = aws_dynamodb_table.this_oxbow_locking
-  to   = aws_dynamodb_table.oxbow_locking
-}
-
-moved {
   from = aws_glue_catalog_table.this_glue_table
   to   = aws_glue_catalog_table.oxbow
-}
-
-moved {
-  from = aws_s3_bucket_notification.this_bucket_notification
-  to   = aws_s3_bucket_notification.warehouse
 }
 
 ################################################################################
@@ -230,4 +220,29 @@ moved {
 moved {
   from = datadog_monitor.dead_letters_monitor
   to   = datadog_monitor.dead_letters
+}
+
+################################################################################
+# Dropped from this module's scope
+#
+# Both resources stay in AWS and keep running; OpenTofu just stops tracking
+# them. Without `destroy = false` the upgrade would delete a live Delta lock
+# table and wipe a bucket's entire notification configuration. Adopt both in
+# the calling configuration -- see UPGRADING.md.
+################################################################################
+
+removed {
+  from = aws_dynamodb_table.this_oxbow_locking
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = aws_s3_bucket_notification.this_bucket_notification
+
+  lifecycle {
+    destroy = false
+  }
 }

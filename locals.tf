@@ -10,14 +10,13 @@ locals {
   # One gate per optional stage. Each stage's config variable is null when the
   # stage is off, so every count and conditional in the module keys off this.
   enabled = {
-    bucket_notification = var.bucket_notification != null
-    group_events        = var.group_events != null
-    auto_tagging        = var.auto_tagging != null
-    glue_catalog_table  = var.glue_catalog_table != null
-    glue_create         = var.glue_create != null
-    glue_sync           = var.glue_sync != null
-    dl_monitoring       = var.dead_letter_monitoring != null
-    sns_delivery        = var.sns_delivery != null
+    group_events       = var.group_events != null
+    auto_tagging       = var.auto_tagging != null
+    glue_catalog_table = var.glue_catalog_table != null
+    glue_create        = var.glue_create != null
+    glue_sync          = var.glue_sync != null
+    dl_monitoring      = var.dead_letter_monitoring != null
+    sns_delivery       = var.sns_delivery != null
   }
 
   sns_topic_arn = try(var.sns_delivery.topic_arn, null)
@@ -46,7 +45,9 @@ locals {
 
   warehouse_prefix_arn = "${var.warehouse_bucket_arn}/${var.s3_path}"
 
-  logstore_table_arn = "arn:${local.partition}:dynamodb:${local.region}:${local.account_id}:table/${var.logstore_dynamodb_table_name}"
+  dynamodb_table_arn_prefix = "arn:${local.partition}:dynamodb:${local.region}:${local.account_id}:table"
+  lock_table_arn            = "${local.dynamodb_table_arn_prefix}/${var.dynamodb_table_name}"
+  logstore_table_arn        = "${local.dynamodb_table_arn_prefix}/${var.logstore_dynamodb_table_name}"
 
   # The set delta-rs documents for the DynamoDB locking provider, plus the
   # DescribeTable its client issues on init. Deliberately no CreateTable: this
@@ -61,7 +62,7 @@ locals {
     "dynamodb:DescribeTable",
   ]
 
-  delta_lock_table_arns = [aws_dynamodb_table.oxbow_locking.arn, local.logstore_table_arn]
+  delta_lock_table_arns = [local.lock_table_arn, local.logstore_table_arn]
 
   glue_catalog_resources = [
     "arn:${local.partition}:glue:${local.region}:${local.account_id}:catalog",
@@ -111,13 +112,10 @@ locals {
     }]
   }
 
-  # A notification configuration owned outside this module still makes S3 a
-  # publisher, and only the caller knows that -- so it is an explicit override,
-  # defaulting to the case this module can infer.
-  s3_publishes_to_ingest_queue = coalesce(
-    var.s3_notifies_ingest_queue,
-    local.enabled.bucket_notification || !local.enabled.sns_delivery,
-  )
+  # This module never owns the bucket's notification configuration, so whether
+  # S3 writes to the ingest queue is the caller's to state. Default to the only
+  # case that can be inferred: no topic means the bucket must be the publisher.
+  s3_publishes_to_ingest_queue = coalesce(var.s3_notifies_ingest_queue, !local.enabled.sns_delivery)
 
   ingest_queue_policy_statements = merge(
     local.s3_publishes_to_ingest_queue ? { s3_send = local.s3_send_statement } : {},
@@ -184,11 +182,9 @@ locals {
 locals {
   name_limits = merge(
     {
-      "lambda_function_name (Lambda, 64)"            = [var.lambda_function_name, 64]
-      "sqs_queue_name (SQS, 80)"                     = [var.sqs_queue_name, 80]
-      "sqs_queue_name_dl (SQS, 80)"                  = [var.sqs_queue_name_dl, 80]
-      "dynamodb_table_name (DynamoDB, 255)"          = [var.dynamodb_table_name, 255]
-      "logstore_dynamodb_table_name (DynamoDB, 255)" = [var.logstore_dynamodb_table_name, 255]
+      "lambda_function_name (Lambda, 64)" = [var.lambda_function_name, 64]
+      "sqs_queue_name (SQS, 80)"          = [var.sqs_queue_name, 80]
+      "sqs_queue_name_dl (SQS, 80)"       = [var.sqs_queue_name_dl, 80]
     },
     local.enabled.group_events ? {
       "group_events.lambda_function_name (Lambda, 64)" = [var.group_events.lambda_function_name, 64]

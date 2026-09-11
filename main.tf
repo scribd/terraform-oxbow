@@ -151,23 +151,3 @@ locals {
     module.oxbow_fifo_queue[0].queue_arn,
   ] : [module.oxbow_queue[0].queue_arn]
 }
-
-# Safe concurrent writes to Delta tables.
-resource "aws_dynamodb_table" "oxbow_locking" {
-  name         = var.dynamodb_table_name
-  billing_mode = "PAY_PER_REQUEST"
-  # Partition key name is hard-coded in delta-rs.
-  hash_key = "key"
-
-  ttl {
-    attribute_name = "leaseDuration"
-    enabled        = true
-  }
-
-  attribute {
-    name = "key"
-    type = "S"
-  }
-
-  tags = var.tags
-}

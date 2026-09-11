@@ -40,8 +40,8 @@ output "autotag_lambda" {
 }
 
 output "dynamodb_lock_table_arn" {
-  description = "ARN of the delta-rs S3 locking table"
-  value       = aws_dynamodb_table.oxbow_locking.arn
+  description = "ARN of the delta-rs S3 locking table this module was pointed at"
+  value       = local.lock_table_arn
 }
 
 output "enabled_stages" {

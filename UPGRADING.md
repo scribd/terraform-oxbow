@@ -3,7 +3,9 @@
 The module now builds its lambdas, queues and buckets from the published
 `terraform-aws-modules` modules instead of raw resources. Every existing
 resource keeps its identity: `moved.tf` relocates each one into its new address,
-so **no queue, lambda, IAM role or DynamoDB table is destroyed or recreated**.
+so **no queue, lambda or IAM role is destroyed or recreated**. Two resources
+leave the module's scope entirely and are handed back to the caller rather than
+destroyed — see the next section.
 
 It is still not a no-op plan. Read the plan before applying, and expect the
 changes below.
@@ -14,6 +16,64 @@ changes below.
   bump is not optional: v6 removed `aws_iam_role.managed_policy_arns`, which the
   previous version of this module used.
 - Do not commit `.terraform.lock.hcl`.
+
+## Two resources leave this module's scope
+
+The module no longer creates the warehouse bucket's notification configuration
+or the Delta lock table. `moved.tf` carries `removed` blocks with
+`lifecycle { destroy = false }` for both, so **OpenTofu forgets them and leaves
+them running in AWS** — without that, the upgrade would wipe a live bucket's
+entire notification configuration and delete the lock table holding Delta
+concurrency state.
+
+You must adopt both in the calling configuration, or they become unmanaged
+drift:
+
+```hcl
+# The lock table: delta-rs hard-codes "key" as the partition key.
+resource "aws_dynamodb_table" "oxbow_locking" {
+  name         = "${var.env}-oxbow-lock"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "key"
+
+  ttl {
+    attribute_name = "leaseDuration"
+    enabled        = true
+  }
+
+  attribute {
+    name = "key"
+    type = "S"
+  }
+}
+
+# The bucket notification, pointed at the module's ingest queue. S3 permits one
+# configuration per bucket, so this is also where every other consumer of that
+# bucket's events belongs.
+resource "aws_s3_bucket_notification" "warehouse" {
+  bucket = module.warehouse.s3_bucket_id
+
+  queue {
+    queue_arn     = module.oxbow.ingest_queue_arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_suffix = ".parquet"
+    filter_prefix = "catalogs/bronze_monolith/"
+  }
+}
+```
+
+Then import them into your own state:
+
+```
+tofu import aws_dynamodb_table.oxbow_locking <table-name>
+tofu import aws_s3_bucket_notification.warehouse <bucket-name>
+```
+
+`dynamodb_table_name` and `logstore_dynamodb_table_name` are now **required** —
+both are interpolated into IAM resource ARNs, and the old `""` defaults produced
+a malformed policy that failed at apply. `enable_bucket_notification` /
+`bucket_notification` are gone; set `s3_notifies_ingest_queue = true` if the
+bucket notifies the ingest queue while `sns_delivery` is also set.
 
 ## One manual decision: lambda log groups
 
@@ -183,7 +243,7 @@ planning.
 | `enable_aws_glue_catalog_table` + `glue_database_name` + `glue_table_name` + `glue_table_description` + `glue_location_uri` + `parquet_schema` | `glue_catalog_table = { database_name, table_name, location_uri, description?, columns? }` |
 | `enable_glue_create` + `glue_create_config` | `glue_create` (same fields; see the renames below) |
 | `enable_glue_sync` + `glue_sync_config` | `glue_sync` (same fields; see the renames below) |
-| `enable_bucket_notification` | `bucket_notification = {}` — or `{ events?, filter_prefix?, filter_suffix? }`, previously hard-coded |
+| `enable_bucket_notification` | gone — the caller owns the bucket notification; see above |
 | `enabled_dead_letters_monitoring` + `dl_critical` + `dl_warning` + `dl_ok` + `dl_alert_recipients` + `dl_alert_message` + `tags_monitoring` + `monitoring_query_conditions` | `dead_letter_monitoring = { critical, warning?, ok?, alert_recipients?, alert_message?, tags?, query_conditions? }` |
 | `sns_topic_arn = ""` meant "no topic" | `sns_delivery = { topic_arn, filter_policy?, filter_policy_scope? }`, or null |
 
@@ -213,6 +273,7 @@ Other input changes:
 - `dead_letter_monitoring.critical` is a required `number`. It is interpolated
   into the monitor query, so a missing or non-numeric threshold used to produce
   a malformed monitor.
+- `dynamodb_table_name` and `logstore_dynamodb_table_name` are required.
 - `warehouse_bucket_account_id`, `manage_lambda_log_groups`,
   `cloudwatch_logs_retention_in_days`, `sqs_managed_sse_enabled` and
   `s3_notifies_ingest_queue` are new.

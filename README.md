@@ -23,6 +23,9 @@ S3 (or SNS) ──► oxbow queue ──► oxbow lambda ──► Delta table
 S3 (or SNS) ──► group queue ──► group-events lambda ──► FIFO queue ──► oxbow lambda
                      │                                       │
                      └──► DLQ                                └──► DLQ
+
+The bucket notification and the two DynamoDB tables are the caller's: this
+module takes their names and points its policies at them.
 ```
 
 Every stage below the core is gated by one variable: **null turns it off, a
@@ -36,7 +39,6 @@ fields are required by the object type, so a stage cannot be half-configured.
 | `glue_create` | — | glue-create lambda, queue, Athena workgroup and results bucket |
 | `glue_sync` | — | glue-sync lambda and queue |
 | `glue_catalog_table` | — | a Glue catalog table over the parquet location |
-| `bucket_notification` | bucket notifications owned elsewhere | the warehouse bucket's notification configuration |
 | `dead_letter_monitoring` | — | one Datadog monitor per dead letter queue |
 
 Each queue a stage creates gets a dead letter queue, and every dead letter queue
@@ -69,10 +71,6 @@ module "oxbow" {
   sqs_queue_name    = "${var.env}-oxbow-queue"
   sqs_queue_name_dl = "${var.env}-oxbow-queue-dl"
 
-  # Take the bucket's notification configuration, with the default
-  # parquet-under-s3_path filter.
-  bucket_notification = {}
-
   dead_letter_monitoring = {
     critical         = 2
     warning          = 1
@@ -103,12 +101,20 @@ Turning on a stage means filling in its object:
   }
 ```
 
-`bucket_notification` writes the bucket's *entire* notification configuration,
-and S3 allows only one per bucket. If anything else already owns that bucket's
-notifications, leave it null and add the queue over there — the queue ARN to
-point at is the `ingest_queue_arn` output. In that case also set
-`s3_notifies_ingest_queue = true` if `sns_delivery` is set, or the queue policy
-admits only SNS and S3's deliveries are rejected with no error.
+## What the caller owns
+
+S3 permits one notification configuration per bucket, and the Delta lock table
+outlives any single pipeline, so neither belongs to this module:
+
+- **The bucket notification.** Point it at the `ingest_queue_arn` output. If the
+  bucket notifies that queue *and* `sns_delivery` is set, also set
+  `s3_notifies_ingest_queue = true`, or the queue policy admits only SNS and
+  S3's deliveries are rejected with no error.
+- **The lock table and the logstore table.** Pass their names as
+  `dynamodb_table_name` and `logstore_dynamodb_table_name`; both are required.
+  delta-rs hard-codes `key` as the lock table's partition key.
+
+UPGRADING.md has copy-pasteable resources for both.
 
 ## Event delivery
 

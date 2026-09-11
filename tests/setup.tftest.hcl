@@ -94,7 +94,6 @@ run "minimal_deployment" {
   assert {
     condition = (
       length(aws_glue_catalog_table.oxbow) == 0 &&
-      length(aws_s3_bucket_notification.warehouse) == 0 &&
       length(aws_sns_topic_subscription.oxbow) == 0 &&
       length(datadog_monitor.dead_letters) == 0
     )
@@ -102,13 +101,8 @@ run "minimal_deployment" {
   }
 
   assert {
-    condition     = aws_dynamodb_table.oxbow_locking.hash_key == "key"
-    error_message = "delta-rs hard-codes 'key' as the lock table partition key"
-  }
-
-  assert {
-    condition     = aws_dynamodb_table.oxbow_locking.billing_mode == "PAY_PER_REQUEST"
-    error_message = "Lock table must stay on-demand"
+    condition     = local.lock_table_arn == "arn:aws:dynamodb:us-east-2:123456789012:table/test-oxbow-lock"
+    error_message = "The lock table ARN must be derived from the name of the existing table"
   }
 }
 
@@ -240,43 +234,3 @@ run "no_queue_policy_allows_a_wildcard_principal" {
   }
 }
 
-run "bucket_notification_defaults_to_parquet_under_the_s3_path" {
-  command = plan
-
-  variables {
-    bucket_notification = {}
-  }
-
-  assert {
-    condition     = local.enabled.bucket_notification
-    error_message = "An empty object still turns the stage on; only null turns it off"
-  }
-
-  assert {
-    condition = alltrue([
-      for q in one(aws_s3_bucket_notification.warehouse).queue :
-      q.filter_prefix == "catalogs/bronze_monolith/" && q.filter_suffix == ".parquet" && q.events == toset(["s3:ObjectCreated:*"])
-    ])
-    error_message = "Defaults must filter to parquet objects created under s3_path"
-  }
-}
-
-run "bucket_notification_filters_can_be_overridden" {
-  command = plan
-
-  variables {
-    bucket_notification = {
-      events        = ["s3:ObjectCreated:Put"]
-      filter_prefix = "other/prefix/"
-      filter_suffix = ".gz.parquet"
-    }
-  }
-
-  assert {
-    condition = alltrue([
-      for q in one(aws_s3_bucket_notification.warehouse).queue :
-      q.filter_prefix == "other/prefix/" && q.filter_suffix == ".gz.parquet"
-    ])
-    error_message = "Explicit filters must win over the derived defaults"
-  }
-}

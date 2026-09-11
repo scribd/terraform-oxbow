@@ -144,16 +144,27 @@ variable "cloudwatch_logs_retention_in_days" {
 # Lock tables
 ################################################################################
 
+# Neither table is created here. Both must exist before the lambdas run, and
+# both names are interpolated into IAM resource ARNs, so an empty one yields a
+# malformed policy that fails at apply.
 variable "dynamodb_table_name" {
   type        = string
-  description = "Name of the delta-rs S3 locking table created by this module"
-  default     = ""
+  description = "Name of the existing delta-rs S3 locking table (DYNAMO_LOCK_TABLE_NAME)"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]{3,255}$", var.dynamodb_table_name))
+    error_message = "dynamodb_table_name must be a valid DynamoDB table name (3-255 chars)."
+  }
 }
 
 variable "logstore_dynamodb_table_name" {
   type        = string
-  description = "Name of the pre-existing delta logstore table the lambdas write to"
-  default     = ""
+  description = "Name of the existing delta logstore table (DELTA_DYNAMO_TABLE_NAME)"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]{3,255}$", var.logstore_dynamodb_table_name))
+    error_message = "logstore_dynamodb_table_name must be a valid DynamoDB table name (3-255 chars)."
+  }
 }
 
 ################################################################################
@@ -250,26 +261,11 @@ variable "s3_notifies_ingest_queue" {
   type        = bool
   description = <<-EOT
     Whether the warehouse bucket delivers object-created events straight to the
-    ingest queue. Leave null to infer it: true when this module owns the bucket
-    notification, or when there is no sns_delivery. Set it true explicitly when a
-    notification configuration owned outside this module targets the ingest queue
-    while sns_delivery is also set -- otherwise the queue policy admits only SNS
-    and S3's deliveries are rejected with no error.
-  EOT
-  default     = null
-}
-
-variable "bucket_notification" {
-  type = object({
-    events        = optional(list(string), ["s3:ObjectCreated:*"])
-    filter_prefix = optional(string)
-    filter_suffix = optional(string, ".parquet")
-  })
-  description = <<-EOT
-    Let this module own the warehouse bucket's notification configuration.
-    S3 permits one configuration per bucket, so leave this null when anything
-    else owns it and point that at the ingest_queue_arn output instead.
-    filter_prefix defaults to "<s3_path>/".
+    ingest queue. This module never owns the bucket's notification
+    configuration, so it cannot always tell: null infers true when there is no
+    sns_delivery, false when there is. Set it true explicitly when the bucket
+    notifies the queue *and* sns_delivery is set, or the queue policy admits
+    only SNS and S3's deliveries are rejected with no error.
   EOT
   default     = null
 }

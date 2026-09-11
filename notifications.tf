@@ -24,23 +24,6 @@ resource "aws_lambda_permission" "oxbow_from_s3" {
   source_account = local.warehouse_bucket_account_id
 }
 
-resource "aws_s3_bucket_notification" "warehouse" {
-  count = local.enabled.bucket_notification ? 1 : 0
-
-  bucket = var.warehouse_bucket_name
-
-  queue {
-    queue_arn     = local.ingest_queue_arn
-    events        = var.bucket_notification.events
-    filter_prefix = coalesce(var.bucket_notification.filter_prefix, "${var.s3_path}/")
-    filter_suffix = var.bucket_notification.filter_suffix
-  }
-
-  # S3 rejects a destination it cannot yet write to, and the queue policy is now
-  # a separate resource -- referencing queue_arn alone does not order against it.
-  depends_on = [module.oxbow_queue, module.group_events_queue]
-}
-
 resource "aws_glue_catalog_table" "oxbow" {
   count = local.enabled.glue_catalog_table ? 1 : 0
 
