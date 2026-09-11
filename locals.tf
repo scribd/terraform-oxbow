@@ -78,6 +78,60 @@ locals {
     "sqs:ChangeMessageVisibility",
   ]
 
+  # Publishers of the object-created events, as reusable statements. Each queue
+  # composes the set that actually writes to it: the ingest queue and the
+  # auto-tagging queue have different publishers, and both paths can be live at
+  # once, so these are additive rather than either/or.
+  s3_send_statement = {
+    effect     = "Allow"
+    actions    = ["sqs:SendMessage"]
+    principals = [{ type = "Service", identifiers = ["s3.amazonaws.com"] }]
+    condition = [
+      {
+        test     = "ArnEquals"
+        variable = "aws:SourceArn"
+        values   = [var.warehouse_bucket_arn]
+      },
+      {
+        test     = "StringEquals"
+        variable = "aws:SourceAccount"
+        values   = [local.warehouse_bucket_account_id]
+      },
+    ]
+  }
+
+  sns_send_statement = {
+    effect     = "Allow"
+    actions    = ["sqs:SendMessage"]
+    principals = [{ type = "Service", identifiers = ["sns.amazonaws.com"] }]
+    condition = [{
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [local.sns_topic_arn]
+    }]
+  }
+
+  # A notification configuration owned outside this module still makes S3 a
+  # publisher, and only the caller knows that -- so it is an explicit override,
+  # defaulting to the case this module can infer.
+  s3_publishes_to_ingest_queue = coalesce(
+    var.s3_notifies_ingest_queue,
+    local.enabled.bucket_notification || !local.enabled.sns_delivery,
+  )
+
+  ingest_queue_policy_statements = merge(
+    local.s3_publishes_to_ingest_queue ? { s3_send = local.s3_send_statement } : {},
+    local.enabled.sns_delivery ? { sns_send = local.sns_send_statement } : {},
+  )
+
+  # The bucket notification this module writes targets the ingest queue only, so
+  # the auto-tagging queue gets an S3 grant only when the caller says a bucket
+  # notification points at it.
+  auto_tagging_queue_policy_statements = merge(
+    local.enabled.auto_tagging && var.auto_tagging.s3_notifies_queue ? { s3_send = local.s3_send_statement } : {},
+    local.enabled.sns_delivery ? { sns_send = local.sns_send_statement } : {},
+  )
+
   log_group_arn = "arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group"
 
   # Queues with no cross-service publisher need no resource policy at all, but
@@ -122,17 +176,19 @@ locals {
   ] : []
 }
 
-# Provider limits are enforced at apply, not at plan: an over-length Lambda or
-# IAM name fails mid-apply after earlier resources have already changed.
+# Lambda, SQS and DynamoDB name limits are enforced by AWS at apply, not at
+# plan, so an over-length name fails mid-apply after earlier resources have
+# already changed. The provider does validate IAM role, IAM policy, Athena
+# workgroup and S3 bucket names client-side at plan, so those are deliberately
+# absent here -- an entry that can never fire is one more number to get wrong.
 locals {
   name_limits = merge(
     {
-      "lambda_function_name (Lambda, 64)"        = [var.lambda_function_name, 64]
-      "oxbow_lambda_role_name (IAM role, 64)"    = [var.oxbow_lambda_role_name, 64]
-      "lambda_permissions_policy_name (IAM, 64)" = [var.lambda_permissions_policy_name, 64]
-      "sqs_queue_name (SQS, 80)"                 = [var.sqs_queue_name, 80]
-      "sqs_queue_name_dl (SQS, 80)"              = [var.sqs_queue_name_dl, 80]
-      "dynamodb_table_name (DynamoDB, 255)"      = [var.dynamodb_table_name, 255]
+      "lambda_function_name (Lambda, 64)"            = [var.lambda_function_name, 64]
+      "sqs_queue_name (SQS, 80)"                     = [var.sqs_queue_name, 80]
+      "sqs_queue_name_dl (SQS, 80)"                  = [var.sqs_queue_name_dl, 80]
+      "dynamodb_table_name (DynamoDB, 255)"          = [var.dynamodb_table_name, 255]
+      "logstore_dynamodb_table_name (DynamoDB, 255)" = [var.logstore_dynamodb_table_name, 255]
     },
     local.enabled.group_events ? {
       "group_events.lambda_function_name (Lambda, 64)" = [var.group_events.lambda_function_name, 64]
@@ -143,23 +199,16 @@ locals {
     } : {},
     local.enabled.auto_tagging ? {
       "auto-tagging function name (Lambda, 64)" = [local.auto_tagging_function, 64]
-      "auto-tagging role name (IAM role, 64)"   = [local.auto_tagging_role_name, 64]
-      "auto-tagging policy name (IAM, 64)"      = [local.auto_tagging_policy, 64]
       "auto-tagging queue name (SQS, 80)"       = [local.auto_tagging_queue_name, 80]
       "auto-tagging DLQ name (SQS, 80)"         = ["${local.auto_tagging_queue_name}-dl", 80]
     } : {},
     local.enabled.glue_create ? {
       "glue_create.lambda_function_name (Lambda, 64)" = [var.glue_create.lambda_function_name, 64]
-      "glue_create.iam_role_name (IAM role, 64)"      = [var.glue_create.iam_role_name, 64]
-      "glue_create.iam_policy_name (IAM, 64)"         = [var.glue_create.iam_policy_name, 64]
       "glue_create.sqs_queue_name (SQS, 80)"          = [var.glue_create.sqs_queue_name, 80]
       "glue_create.sqs_queue_name_dl (SQS, 80)"       = [var.glue_create.sqs_queue_name_dl, 80]
-      "glue_create.athena_bucket_name (S3, 63)"       = [var.glue_create.athena_bucket_name, 63]
     } : {},
     local.enabled.glue_sync ? {
       "glue_sync.lambda_function_name (Lambda, 64)" = [var.glue_sync.lambda_function_name, 64]
-      "glue_sync.iam_role_name (IAM role, 64)"      = [var.glue_sync.iam_role_name, 64]
-      "glue_sync.iam_policy_name (IAM, 64)"         = [var.glue_sync.iam_policy_name, 64]
       "glue_sync.sqs_queue_name (SQS, 80)"          = [var.glue_sync.sqs_queue_name, 80]
       "glue_sync.sqs_queue_name_dl (SQS, 80)"       = [var.glue_sync.sqs_queue_name_dl, 80]
     } : {},

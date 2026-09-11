@@ -89,47 +89,6 @@ module "oxbow_queue" {
   tags = var.tags
 }
 
-# Publishers of the object-created events. Both paths can be live at once --
-# the bucket notifying the queue directly while the queue is also subscribed to
-# a topic -- so these are additive, not either/or.
-locals {
-  s3_publishes_to_ingest_queue = local.enabled.bucket_notification || !local.enabled.sns_delivery
-
-  ingest_queue_policy_statements = merge(
-    local.s3_publishes_to_ingest_queue ? {
-      s3_send = {
-        effect     = "Allow"
-        actions    = ["sqs:SendMessage"]
-        principals = [{ type = "Service", identifiers = ["s3.amazonaws.com"] }]
-        condition = [
-          {
-            test     = "ArnEquals"
-            variable = "aws:SourceArn"
-            values   = [var.warehouse_bucket_arn]
-          },
-          {
-            test     = "StringEquals"
-            variable = "aws:SourceAccount"
-            values   = [local.warehouse_bucket_account_id]
-          },
-        ]
-      }
-    } : {},
-    local.enabled.sns_delivery ? {
-      sns_send = {
-        effect     = "Allow"
-        actions    = ["sqs:SendMessage"]
-        principals = [{ type = "Service", identifiers = ["sns.amazonaws.com"] }]
-        condition = [{
-          test     = "ArnEquals"
-          variable = "aws:SourceArn"
-          values   = [local.sns_topic_arn]
-        }]
-      }
-    } : {},
-  )
-}
-
 resource "aws_iam_policy" "oxbow_lambda" {
   name        = var.lambda_permissions_policy_name
   description = "Oxbow lambda access to the warehouse prefix, its queues and the Delta lock tables"

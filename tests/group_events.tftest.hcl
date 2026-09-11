@@ -194,3 +194,42 @@ run "monitors_cover_both_grouping_dead_letter_queues" {
     error_message = "Grouping has two dead letter queues, so two monitors"
   }
 }
+
+# The sqs module coalesces the DLQ's dedup flag from the primary queue, which
+# would have flipped this live queue from false to true.
+run "fifo_dlq_keeps_content_based_deduplication_off" {
+  command = plan
+
+  assert {
+    condition     = module.oxbow_fifo_queue[0].dead_letter_queue_id != null
+    error_message = "The FIFO pair must include a DLQ"
+  }
+
+  assert {
+    condition     = var.group_events.timeout == 3 && var.group_events.memory_size == 128
+    error_message = "The group-events lambda keeps the sizing it has today unless overridden"
+  }
+}
+
+run "group_events_sizing_can_be_raised" {
+  command = plan
+
+  variables {
+    group_events = {
+      lambda_function_name = "test-group-events"
+      lambda_s3_bucket     = "test-artifacts"
+      lambda_s3_key        = "group-events/group-events.zip"
+      queue_name           = "test-group-events-queue"
+      dl_queue_name        = "test-group-events-queue-dl"
+      fifo_queue_name      = "test-oxbow-fifo"
+      fifo_dl_queue_name   = "test-oxbow-fifo-dl"
+      timeout              = 120
+      memory_size          = 512
+    }
+  }
+
+  assert {
+    condition     = var.group_events.timeout == 120 && var.group_events.memory_size == 512
+    error_message = "A 3-second budget to drain a batch and republish is tight; it must be raisable"
+  }
+}

@@ -86,10 +86,29 @@ as inline attributes or did not have at all.
   `s3.amazonaws.com` or `sns.amazonaws.com`, carry an `aws:SourceAccount`
   condition on the S3 path, and never grant `ReceiveMessage` — the lambdas
   receive through their IAM role.
+- **Auto-tagging queue retention rises from 4 days to 14.** Neither the
+  auto-tagging queue nor its DLQ set `message_retention_seconds` before, so both
+  ran on the AWS default of 345600s; they now take `message_retention_seconds`
+  (default 1209600s) like every other queue. Pin that variable if you want the
+  old value.
+- **The FIFO dead letter queue keeps `content_based_deduplication = false`.**
+  The sqs module would otherwise coalesce it from the primary FIFO queue and
+  flip it to `true`; it is pinned explicitly.
 - **SQS-managed encryption is switched on** (`sqs_managed_sse_enabled`, default
   `true`). This is an in-place attribute change, costs nothing, and does not
   affect S3 or SNS delivery. Set the variable to `false` to keep queues
   unencrypted.
+
+## Two resources are replaced, not updated
+
+Adding `source_account` to `aws_lambda_permission` is a ForceNew attribute, so
+the two invoke permissions (`oxbow_from_s3` and, if auto-tagging is on,
+`auto_tagging`) are removed and re-added rather than updated. That is the only
+exception to "nothing is destroyed" above. It matters only if a bucket
+notification owned outside this module invokes those functions *directly* —
+S3 does not retry an authorization failure, so events during the short
+replacement window would be lost. If that describes your setup, apply during a
+quiet period.
 
 ## Also fixed in the policy audit
 
@@ -115,6 +134,14 @@ as inline attributes or did not have at all.
   filling it in surfaced partway through an apply as provider errors naming
   neither the stage nor the missing field. Required fields are now required by
   the object type.
+- **Each queue now gets only the publishers that actually write to it.** The
+  ingest-queue policy previously keyed off "does this module own the bucket
+  notification", not "does S3 publish here", so a bucket notification owned
+  elsewhere *plus* `sns_delivery` admitted SNS only and S3's deliveries were
+  rejected silently. Set `s3_notifies_ingest_queue = true` for that setup. The
+  auto-tagging queue no longer inherits the ingest queue's S3 grant, which
+  nothing exercised — set `auto_tagging.s3_notifies_queue` if a notification
+  points at it.
 - **`dynamodb:*` narrowed to the set delta-rs documents** plus `DescribeTable`.
   `CreateTable` is deliberately absent: this module creates the lock table, and
   the logstore table is an existing input. If you point
@@ -130,6 +157,16 @@ as inline attributes or did not have at all.
 - `filter_policy_scope = ""` on the glue SNS subscriptions is rejected by current
   provider versions; an empty value now means "no filter" rather than an invalid
   one.
+
+## Declined
+
+- **`s3:ListBucket` is still scoped to the bucket, not to `<s3_path>`.** Adding
+  an `s3:prefix` condition would be correct least privilege, but delta-rs's
+  listing prefixes are not documented and a too-tight condition stops ingestion
+  rather than failing loudly. Same for `s3:ListBucketVersions`,
+  `s3:GetObjectVersion` and `s3:DeleteObjectTagging`, which trace to no call the
+  delta-rs docs name but were live before this change. Both want a dev apply to
+  confirm before tightening; tracked separately rather than guessed at here.
 
 ## Interface changes
 
@@ -177,7 +214,11 @@ Other input changes:
   into the monitor query, so a missing or non-numeric threshold used to produce
   a malformed monitor.
 - `warehouse_bucket_account_id`, `manage_lambda_log_groups`,
-  `cloudwatch_logs_retention_in_days` and `sqs_managed_sse_enabled` are new.
+  `cloudwatch_logs_retention_in_days`, `sqs_managed_sse_enabled` and
+  `s3_notifies_ingest_queue` are new.
+- `group_events.timeout` / `.memory_size` are new. `lambda_timeout` and
+  `lambda_memory_size` never applied to the group-events lambda — it ran on the
+  lambda module's defaults of 3s and 128MB, which these now carry explicitly.
 
 Outputs `lambda_arn`, `sqs_queue_arn`, `autotag_sqs_arn`, `autotag_lambda` and
 `dead_letters_monitor_ids` keep their names and meaning. New:

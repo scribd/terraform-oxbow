@@ -20,6 +20,9 @@ module "group_events_lambda" {
     key    = var.group_events.lambda_s3_key
   }
 
+  memory_size = var.group_events.memory_size
+  timeout     = var.group_events.timeout
+
   environment_variables = merge(
     {
       RUST_LOG  = var.rust_log_oxbow_debug_level
@@ -94,11 +97,14 @@ module "oxbow_fifo_queue" {
   create_queue_policy     = true
   queue_policy_statements = local.same_account_only_statements
 
-  create_dlq                     = true
-  dlq_name                       = local.fifo_dlq_name
-  dlq_delay_seconds              = 0
-  dlq_visibility_timeout_seconds = 30
-  redrive_policy                 = { maxReceiveCount = var.group_events.max_receive_count }
+  create_dlq = true
+  dlq_name   = local.fifo_dlq_name
+  # The sqs module coalesces these from the primary queue; pin them so the DLQ
+  # keeps the values it has today.
+  dlq_content_based_deduplication = false
+  dlq_delay_seconds               = 0
+  dlq_visibility_timeout_seconds  = 30
+  redrive_policy                  = { maxReceiveCount = var.group_events.max_receive_count }
 
   create_dlq_queue_policy     = true
   dlq_queue_policy_statements = local.same_account_only_statements

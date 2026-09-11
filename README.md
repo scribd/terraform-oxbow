@@ -106,7 +106,9 @@ Turning on a stage means filling in its object:
 `bucket_notification` writes the bucket's *entire* notification configuration,
 and S3 allows only one per bucket. If anything else already owns that bucket's
 notifications, leave it null and add the queue over there — the queue ARN to
-point at is the `ingest_queue_arn` output.
+point at is the `ingest_queue_arn` output. In that case also set
+`s3_notifies_ingest_queue = true` if `sns_delivery` is set, or the queue policy
+admits only SNS and S3's deliveries are rejected with no error.
 
 ## Event delivery
 
@@ -144,10 +146,11 @@ nothing while looking like it works.
 ## Naming limits
 
 Several names are derived rather than passed in (`<lambda_function_name>-auto_tagging`,
-`<sqs_queue_name>-auto_tagging-dl`). AWS enforces Lambda and IAM name limits at
-*apply*, not at plan, so an over-long derived name fails partway through an
-apply. The module checks every name it will create against its own limit at
-plan time and fails with the offending name and its length.
+`<sqs_queue_name>-auto_tagging-dl`). Lambda, SQS and DynamoDB name limits are
+enforced by AWS at *apply*, not at plan, so an over-long derived name fails
+partway through an apply. The module checks those names against their limits at
+plan time and fails with the offending name and its length. IAM, Athena and S3
+names are left out: the provider already validates them client-side at plan.
 
 ## Lambda log groups
 

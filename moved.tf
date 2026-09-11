@@ -5,6 +5,11 @@
 
 ################################################################################
 # Oxbow
+#
+# module.oxbow_lambda has no count, so its targets are indexed on the resource
+# (`...this[0]`). Every stage module is counted, so those targets index the
+# module and move the resource whole (`module.x[0]...this`), which preserves the
+# instance key. Both forms are deliberate; do not "normalise" one into the other.
 ################################################################################
 
 moved {

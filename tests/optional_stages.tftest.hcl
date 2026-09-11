@@ -134,11 +134,14 @@ run "glue_create_wires_athena_workgroup_queue_and_subscription" {
     error_message = "glue-create subscribes its queue to its configured topic"
   }
 
-  # Leaving the SNS filter fields unset must reach the provider as null. The
-  # rejected value -- "" -- is covered by invalid_filter_policy_scope_is_rejected
-  # in policies.tftest.hcl; it cannot be asserted here, because the attribute is
-  # computed (so mocked) and `var.*` inside a run block reads the test's raw
-  # value rather than the type-converted one, skipping optional() defaults.
+  # Leaving the SNS filter fields unset must reach the provider as null; "" is
+  # rejected, which invalid_filter_policy_scope_is_rejected covers.
+  #
+  # Not asserted on var.glue_create here: for an `optional()` field with no
+  # default, a run-level variables block leaves the attribute *absent* from the
+  # object, so the reference is an error rather than null. Fields declared
+  # `optional(x, default)` do get their default at run level -- only the
+  # no-default form behaves this way.
   assert {
     condition     = length(aws_sns_topic_subscription.glue_create) == 1
     error_message = "An unset filter scope must still produce a valid subscription"

@@ -468,3 +468,114 @@ run "filter_policy_scope_without_a_policy_is_rejected" {
 
   expect_failures = [var.auto_tagging]
 }
+
+################################################################################
+# Publisher gating per queue
+################################################################################
+
+# The gate asked "does this module own the bucket notification", not "does S3
+# publish here". With the notification owned elsewhere and a topic also set, the
+# ingest queue admitted SNS only and S3's deliveries were rejected silently.
+run "external_bucket_notification_plus_sns_can_admit_both" {
+  command = plan
+
+  variables {
+    sns_delivery             = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
+    s3_notifies_ingest_queue = true
+  }
+
+  assert {
+    condition     = toset(keys(local.ingest_queue_policy_statements)) == toset(["s3_send", "sns_send"])
+    error_message = "An externally-owned notification still makes S3 a publisher of the ingest queue"
+  }
+}
+
+run "s3_publisher_is_inferred_when_not_stated" {
+  command = plan
+
+  assert {
+    condition     = local.s3_publishes_to_ingest_queue
+    error_message = "With no topic, S3 must be admitted without the caller saying so"
+  }
+}
+
+run "the_override_can_also_withhold_the_s3_grant" {
+  command = plan
+
+  variables {
+    bucket_notification      = {}
+    s3_notifies_ingest_queue = false
+  }
+
+  assert {
+    condition     = !contains(keys(local.ingest_queue_policy_statements), "s3_send")
+    error_message = "An explicit false must win over the inference"
+  }
+}
+
+# The bucket notification this module writes targets the ingest queue only, so
+# the auto-tagging queue was carrying an S3 grant nothing exercised.
+run "auto_tagging_queue_has_no_unexercised_s3_grant" {
+  command = plan
+
+  variables {
+    bucket_notification = {}
+    auto_tagging = {
+      lambda_s3_bucket = "test-artifacts"
+      lambda_s3_key    = "auto-tagging/auto-tagging.zip"
+    }
+  }
+
+  assert {
+    condition     = length(keys(local.auto_tagging_queue_policy_statements)) == 0
+    error_message = "Nothing publishes to the auto-tagging queue here, so it needs no resource policy"
+  }
+
+  assert {
+    condition     = contains(keys(local.ingest_queue_policy_statements), "s3_send")
+    error_message = "The ingest queue is the one the notification targets"
+  }
+}
+
+run "auto_tagging_queue_admits_s3_when_the_caller_wires_it" {
+  command = plan
+
+  variables {
+    auto_tagging = {
+      lambda_s3_bucket  = "test-artifacts"
+      lambda_s3_key     = "auto-tagging/auto-tagging.zip"
+      s3_notifies_queue = true
+    }
+  }
+
+  assert {
+    condition     = keys(local.auto_tagging_queue_policy_statements) == ["s3_send"]
+    error_message = "Opting in must grant S3 on the auto-tagging queue"
+  }
+}
+
+################################################################################
+# Name limits, continued
+################################################################################
+
+# The guard once capped IAM policy names at 64, the *role* limit, and rejected
+# legal plans. IAM permits 128, and the provider validates it at plan anyway.
+# https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html
+run "iam_policy_name_of_100_chars_is_accepted" {
+  command = plan
+
+  variables {
+    lambda_permissions_policy_name = "test-oxbow-policy-name-that-is-one-hundred-characters-long-which-iam-permits-for-policies-aaaaaaaaaa"
+  }
+
+  assert {
+    condition     = length(var.lambda_permissions_policy_name) == 100
+    error_message = "This case is only meaningful above the 64-char role limit"
+  }
+
+  assert {
+    condition     = length(local.over_limit_names) == 0
+    error_message = "A 100-character IAM policy name is legal and must not be rejected"
+  }
+}
+

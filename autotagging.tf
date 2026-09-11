@@ -57,7 +57,7 @@ module "auto_tagging_queue" {
   sqs_managed_sse_enabled    = var.sqs_managed_sse_enabled
 
   create_queue_policy     = true
-  queue_policy_statements = local.ingest_queue_policy_statements
+  queue_policy_statements = local.auto_tagging_queue_policy_statements
 
   create_dlq                     = true
   dlq_name                       = "${local.auto_tagging_queue_name}-dl"

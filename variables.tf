@@ -65,13 +65,13 @@ variable "lambda_s3_key" {
 
 variable "lambda_timeout" {
   type        = number
-  description = "Lambda timeout in seconds, applied to every lambda this module creates"
+  description = "Lambda timeout in seconds for the oxbow, auto-tagging and glue lambdas. The group-events lambda takes group_events.timeout."
   default     = 120
 }
 
 variable "lambda_memory_size" {
   type        = number
-  description = "Lambda memory size in MB, applied to every lambda this module creates"
+  description = "Lambda memory size in MB for the oxbow, auto-tagging and glue lambdas. The group-events lambda takes group_events.memory_size."
   default     = 128
 }
 
@@ -246,6 +246,19 @@ variable "sns_delivery" {
 # are required by the type, so an enabled stage cannot be half-configured.
 ################################################################################
 
+variable "s3_notifies_ingest_queue" {
+  type        = bool
+  description = <<-EOT
+    Whether the warehouse bucket delivers object-created events straight to the
+    ingest queue. Leave null to infer it: true when this module owns the bucket
+    notification, or when there is no sns_delivery. Set it true explicitly when a
+    notification configuration owned outside this module targets the ingest queue
+    while sns_delivery is also set -- otherwise the queue policy admits only SNS
+    and S3's deliveries are rejected with no error.
+  EOT
+  default     = null
+}
+
 variable "bucket_notification" {
   type = object({
     events        = optional(list(string), ["s3:ObjectCreated:*"])
@@ -273,6 +286,8 @@ variable "group_events" {
     batch_size                         = optional(number, 10)
     maximum_batching_window_in_seconds = optional(number, 1)
     max_receive_count                  = optional(number, 8)
+    timeout                            = optional(number, 3)
+    memory_size                        = optional(number, 128)
   })
   description = <<-EOT
     Batch events by table prefix before oxbow sees them. S3 events land on
@@ -287,6 +302,7 @@ variable "auto_tagging" {
   type = object({
     lambda_s3_bucket    = string
     lambda_s3_key       = string
+    s3_notifies_queue   = optional(bool, false)
     filter_policy       = optional(string)
     filter_policy_scope = optional(string)
   })
@@ -294,8 +310,9 @@ variable "auto_tagging" {
     Tag objects as they land, on its own queue, lambda and IAM role. Names are
     derived from the oxbow names with an "-auto_tagging" suffix. This module
     does not route events to its queue: set sns_delivery, or wire the bucket to
-    the autotag_sqs_arn output. The filter fields apply to its own subscription,
-    so it can take a narrower slice of the topic than oxbow does.
+    the autotag_sqs_arn output -- set s3_notifies_queue when you do that, or its
+    queue policy will reject S3. The filter fields apply to its own
+    subscription, so it can take a narrower slice of the topic than oxbow does.
   EOT
   default     = null
 
