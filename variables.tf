@@ -261,13 +261,13 @@ variable "s3_notifies_ingest_queue" {
   type        = bool
   description = <<-EOT
     Whether the warehouse bucket delivers object-created events straight to the
-    ingest queue. This module never owns the bucket's notification
-    configuration, so it cannot always tell: null infers true when there is no
-    sns_delivery, false when there is. Set it true explicitly when the bucket
-    notifies the queue *and* sns_delivery is set, or the queue policy admits
-    only SNS and S3's deliveries are rejected with no error.
+    ingest queue, i.e. an S3 notification configuration (owned by the caller)
+    targets it. Independent of sns_delivery: a queue can be fed by a bucket
+    notification, by a topic subscription, or by both at once. Set this false
+    on a topic-only deployment so the queue policy does not carry an S3 grant
+    nothing uses.
   EOT
-  default     = null
+  default     = true
 }
 
 variable "group_events" {

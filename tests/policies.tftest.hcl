@@ -187,19 +187,6 @@ run "names_at_the_limit_are_accepted" {
 # Policy defects found while auditing the rewrite
 ################################################################################
 
-run "sns_only_deployment_does_not_admit_s3" {
-  command = plan
-
-  variables {
-    sns_delivery = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
-  }
-
-  assert {
-    condition     = keys(local.ingest_queue_policy_statements) == ["sns_send"]
-    error_message = "With delivery only via SNS, S3 must not be granted SendMessage"
-  }
-}
-
 # aws:SourceAccount was hardcoded to the deploying account, which rejects every
 # event from a warehouse bucket owned by another account.
 run "cross_account_warehouse_bucket_is_supported" {
@@ -456,45 +443,6 @@ run "filter_policy_scope_without_a_policy_is_rejected" {
 # Publisher gating per queue
 ################################################################################
 
-# This module never owns the bucket notification, so it cannot infer that S3 is
-# a publisher when a topic is also configured. Before the flag existed, that
-# combination admitted SNS only and S3's deliveries were rejected silently.
-run "external_bucket_notification_plus_sns_can_admit_both" {
-  command = plan
-
-  variables {
-    sns_delivery             = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
-    s3_notifies_ingest_queue = true
-  }
-
-  assert {
-    condition     = toset(keys(local.ingest_queue_policy_statements)) == toset(["s3_send", "sns_send"])
-    error_message = "An externally-owned notification still makes S3 a publisher of the ingest queue"
-  }
-}
-
-run "s3_publisher_is_inferred_when_not_stated" {
-  command = plan
-
-  assert {
-    condition     = local.s3_publishes_to_ingest_queue
-    error_message = "With no topic, S3 must be admitted without the caller saying so"
-  }
-}
-
-run "the_override_can_also_withhold_the_s3_grant" {
-  command = plan
-
-  variables {
-    s3_notifies_ingest_queue = false
-  }
-
-  assert {
-    condition     = !contains(keys(local.ingest_queue_policy_statements), "s3_send")
-    error_message = "An explicit false must win over the inference"
-  }
-}
-
 # The bucket notification this module writes targets the ingest queue only, so
 # the auto-tagging queue was carrying an S3 grant nothing exercised.
 run "auto_tagging_queue_has_no_unexercised_s3_grant" {
@@ -560,3 +508,92 @@ run "iam_policy_name_of_100_chars_is_accepted" {
   }
 }
 
+################################################################################
+# Delivery shapes
+#
+# The ingest queue can be fed by an S3 bucket notification, by an SNS topic
+# subscription, or by both. This module owns neither, so each publisher is
+# declared explicitly; inferring one from the other silently dropped events.
+################################################################################
+
+run "bucket_notification_only" {
+  command = plan
+
+  assert {
+    condition     = keys(local.ingest_queue_policy_statements) == ["s3_send"]
+    error_message = "An SQS-notification deployment must admit S3 and nothing else"
+  }
+
+  assert {
+    condition     = length(aws_sns_topic_subscription.oxbow) == 0
+    error_message = "No topic means no subscription"
+  }
+
+  assert {
+    condition     = !contains(keys(local.oxbow_environment), "UNWRAP_SNS_ENVELOPE")
+    error_message = "Raw S3 events carry no SNS envelope to unwrap"
+  }
+}
+
+run "sns_topic_only" {
+  command = plan
+
+  variables {
+    sns_delivery             = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
+    s3_notifies_ingest_queue = false
+  }
+
+  assert {
+    condition     = keys(local.ingest_queue_policy_statements) == ["sns_send"]
+    error_message = "A topic-only deployment must not carry an S3 grant nothing uses"
+  }
+
+  assert {
+    condition     = length(aws_sns_topic_subscription.oxbow) == 1
+    error_message = "The ingest queue must be subscribed to the topic"
+  }
+
+  assert {
+    condition     = local.oxbow_environment["UNWRAP_SNS_ENVELOPE"] == true
+    error_message = "Oxbow must unwrap the SNS envelope when fed from a topic"
+  }
+}
+
+run "both_publishers_at_once" {
+  command = plan
+
+  variables {
+    sns_delivery = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
+  }
+
+  assert {
+    condition     = toset(keys(local.ingest_queue_policy_statements)) == toset(["s3_send", "sns_send"])
+    error_message = "A queue fed by both a bucket notification and a topic must admit both"
+  }
+
+  assert {
+    condition     = length(aws_sns_topic_subscription.oxbow) == 1
+    error_message = "The topic subscription is still created"
+  }
+}
+
+run "s3_grant_is_scoped_identically_on_both_shapes" {
+  command = plan
+
+  variables {
+    sns_delivery = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
+  }
+
+  assert {
+    condition = alltrue([
+      for c in local.ingest_queue_policy_statements["s3_send"].condition :
+      contains(["aws:SourceArn", "aws:SourceAccount"], c.variable)
+    ])
+    error_message = "The S3 grant keeps its bucket and account conditions regardless of the other publisher"
+  }
+
+  assert {
+    condition     = local.ingest_queue_policy_statements["sns_send"].condition[0].values == ["arn:aws:sns:us-east-2:123456789012:warehouse-events"]
+    error_message = "The SNS grant stays scoped to the configured topic"
+  }
+}

@@ -106,10 +106,9 @@ Turning on a stage means filling in its object:
 S3 permits one notification configuration per bucket, and the Delta lock table
 outlives any single pipeline, so neither belongs to this module:
 
-- **The bucket notification.** Point it at the `ingest_queue_arn` output. If the
-  bucket notifies that queue *and* `sns_delivery` is set, also set
-  `s3_notifies_ingest_queue = true`, or the queue policy admits only SNS and
-  S3's deliveries are rejected with no error.
+- **The bucket notification**, if you use one. Point it at the
+  `ingest_queue_arn` output; see Event delivery below for which publishers to
+  declare.
 - **The lock table and the logstore table.** Pass their names as
   `dynamodb_table_name` and `logstore_dynamodb_table_name`; both are required.
   delta-rs hard-codes `key` as the lock table's partition key.
@@ -118,12 +117,24 @@ UPGRADING.md has copy-pasteable resources for both.
 
 ## Event delivery
 
-Leave `sns_delivery` null and S3 notifies the ingest queue directly. Set it and
-the module subscribes the ingest queue to that topic instead, and sets
-`UNWRAP_SNS_ENVELOPE` on whichever lambda reads the envelope first — the
-group-events lambda when grouping is on, oxbow otherwise. The queue policy
-follows: it admits `s3.amazonaws.com` scoped to the bucket and account, or
-`sns.amazonaws.com` scoped to the topic. Both publishers can be live at once.
+The ingest queue can be fed by an S3 bucket notification, by an SNS topic
+subscription, or by both at once. This module owns neither, so each publisher is
+declared rather than inferred:
+
+| Shape | Set | Queue policy admits |
+| --- | --- | --- |
+| bucket notification → SQS | nothing (defaults) | `s3.amazonaws.com`, scoped to the bucket and account |
+| S3 → SNS → SQS | `sns_delivery`, `s3_notifies_ingest_queue = false` | `sns.amazonaws.com`, scoped to the topic |
+| both | `sns_delivery` | both |
+
+`s3_notifies_ingest_queue` defaults to `true` because the failure directions are
+not symmetric: an unused S3 grant is a tidiness problem, whereas a missing one
+means S3's deliveries are rejected and objects silently never become Delta
+tables. Set it `false` on a topic-only deployment.
+
+Setting `sns_delivery` also puts `UNWRAP_SNS_ENVELOPE` on whichever lambda reads
+the envelope first — the group-events lambda when grouping is on, oxbow
+otherwise.
 
 Every stage that subscribes to a topic takes its own `filter_policy` (raw SNS
 filter policy JSON) and `filter_policy_scope` (`MessageAttributes`, the AWS

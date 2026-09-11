@@ -112,13 +112,11 @@ locals {
     }]
   }
 
-  # This module never owns the bucket's notification configuration, so whether
-  # S3 writes to the ingest queue is the caller's to state. Default to the only
-  # case that can be inferred: no topic means the bucket must be the publisher.
-  s3_publishes_to_ingest_queue = coalesce(var.s3_notifies_ingest_queue, !local.enabled.sns_delivery)
-
+  # The two delivery paths are independent, and this module owns neither the
+  # bucket notification nor the topic, so each is declared rather than inferred.
+  # Both can be live at once.
   ingest_queue_policy_statements = merge(
-    local.s3_publishes_to_ingest_queue ? { s3_send = local.s3_send_statement } : {},
+    var.s3_notifies_ingest_queue ? { s3_send = local.s3_send_statement } : {},
     local.enabled.sns_delivery ? { sns_send = local.sns_send_statement } : {},
   )
 

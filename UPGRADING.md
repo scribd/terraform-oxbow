@@ -72,8 +72,10 @@ tofu import aws_s3_bucket_notification.warehouse <bucket-name>
 `dynamodb_table_name` and `logstore_dynamodb_table_name` are now **required** —
 both are interpolated into IAM resource ARNs, and the old `""` defaults produced
 a malformed policy that failed at apply. `enable_bucket_notification` /
-`bucket_notification` are gone; set `s3_notifies_ingest_queue = true` if the
-bucket notifies the ingest queue while `sns_delivery` is also set.
+`bucket_notification` are gone. The two delivery paths are now declared
+independently: `s3_notifies_ingest_queue` (default `true`) and `sns_delivery`.
+A topic-only deployment should set the former `false`; a deployment fed by both
+needs no change.
 
 ## One manual decision: lambda log groups
 
