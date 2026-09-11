@@ -247,6 +247,7 @@ planning.
 | `enable_glue_sync` + `glue_sync_config` | `glue_sync` (same fields; see the renames below) |
 | `enable_bucket_notification` | gone — the caller owns the bucket notification; see above |
 | `enabled_dead_letters_monitoring` + `dl_critical` + `dl_warning` + `dl_ok` + `dl_alert_recipients` + `dl_alert_message` + `tags_monitoring` + `monitoring_query_conditions` | `dead_letter_monitoring = { critical, warning?, ok?, alert_recipients?, alert_message?, tags?, query_conditions? }` |
+| `lambda_function_name` + `lambda_s3_bucket` + `lambda_s3_key` + `oxbow_lambda_role_name` + `lambda_permissions_policy_name` + `sqs_queue_name` + `sqs_queue_name_dl` | `oxbow = { lambda_function_name, lambda_s3_bucket, lambda_s3_key, role_name, policy_name, queue_name, dl_queue_name }` |
 | `sns_topic_arn = ""` meant "no topic" | `sns_delivery = { topic_arn, filter_policy?, filter_policy_scope? }`, or null |
 
 ### SNS subscription filters

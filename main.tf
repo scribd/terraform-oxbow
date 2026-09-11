@@ -20,7 +20,7 @@ module "oxbow_lambda" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "8.8.0"
 
-  function_name = var.lambda_function_name
+  function_name = var.oxbow.lambda_function_name
   description   = var.lambda_description
   handler       = "provided"
   runtime       = "provided.al2023"
@@ -28,8 +28,8 @@ module "oxbow_lambda" {
 
   create_package = false
   s3_existing_package = {
-    bucket = var.lambda_s3_bucket
-    key    = var.lambda_s3_key
+    bucket = var.oxbow.lambda_s3_bucket
+    key    = var.oxbow.lambda_s3_key
   }
 
   memory_size                    = var.lambda_memory_size
@@ -37,7 +37,7 @@ module "oxbow_lambda" {
   reserved_concurrent_executions = var.lambda_reserved_concurrent_executions
   environment_variables          = local.oxbow_environment
 
-  role_name     = var.oxbow_lambda_role_name
+  role_name     = var.oxbow.role_name
   attach_policy = true
   policy        = aws_iam_policy.oxbow_lambda.arn
 
@@ -78,7 +78,7 @@ module "oxbow_queue" {
   queue_policy_statements = local.ingest_queue_policy_statements
 
   create_dlq                     = true
-  dlq_name                       = var.sqs_queue_name_dl
+  dlq_name                       = var.oxbow.dl_queue_name
   dlq_delay_seconds              = 0
   dlq_visibility_timeout_seconds = 30
   redrive_policy                 = { maxReceiveCount = var.sqs_redrive_policy_maxReceiveCount }
@@ -90,7 +90,7 @@ module "oxbow_queue" {
 }
 
 resource "aws_iam_policy" "oxbow_lambda" {
-  name        = var.lambda_permissions_policy_name
+  name        = var.oxbow.policy_name
   description = "Oxbow lambda access to the warehouse prefix, its queues and the Delta lock tables"
   policy      = data.aws_iam_policy_document.oxbow_lambda.json
   tags        = var.tags

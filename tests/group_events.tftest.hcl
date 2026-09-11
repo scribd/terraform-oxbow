@@ -40,21 +40,24 @@ variables {
   warehouse_bucket_arn = "arn:aws:s3:::scribdinc-data-lake-test"
   s3_path              = "catalogs/bronze_monolith"
 
-  lambda_function_name           = "test-oxbow"
-  lambda_s3_bucket               = "test-artifacts"
-  lambda_s3_key                  = "oxbow/oxbow-lambda.zip"
-  oxbow_lambda_role_name         = "test-oxbow-role"
-  lambda_permissions_policy_name = "test-oxbow-policy"
 
   rust_log_deltalake_debug_level = "info"
   rust_log_oxbow_debug_level     = "info"
   aws_s3_locking_provider        = "dynamodb"
 
+  oxbow = {
+    lambda_function_name = "test-oxbow"
+    lambda_s3_bucket     = "test-artifacts"
+    lambda_s3_key        = "oxbow/oxbow-lambda.zip"
+    role_name            = "test-oxbow-role"
+    policy_name          = "test-oxbow-policy"
+    queue_name           = "test-oxbow-queue"
+    dl_queue_name        = "test-oxbow-queue-dl"
+  }
+
   dynamodb_table_name          = "test-oxbow-lock"
   logstore_dynamodb_table_name = "test-delta-logstore"
 
-  sqs_queue_name    = "test-oxbow-queue"
-  sqs_queue_name_dl = "test-oxbow-queue-dl"
 
   group_events = {
     lambda_function_name = "test-group-events"

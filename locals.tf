@@ -32,16 +32,16 @@ locals {
   fifo_queue_name = local.enabled.group_events ? "${trimsuffix(var.group_events.fifo_queue_name, ".fifo")}.fifo" : ""
   fifo_dlq_name   = local.enabled.group_events ? "${trimsuffix(var.group_events.fifo_dl_queue_name, ".fifo")}.fifo" : ""
 
-  oxbow_source_queue_name = local.enabled.group_events ? local.fifo_queue_name : var.sqs_queue_name
-  ingest_queue_name       = local.enabled.group_events ? var.group_events.queue_name : var.sqs_queue_name
+  oxbow_source_queue_name = local.enabled.group_events ? local.fifo_queue_name : var.oxbow.queue_name
+  ingest_queue_name       = local.enabled.group_events ? var.group_events.queue_name : var.oxbow.queue_name
 
   oxbow_source_queue_arn = local.enabled.group_events ? module.oxbow_fifo_queue[0].queue_arn : module.oxbow_queue[0].queue_arn
   ingest_queue_arn       = local.enabled.group_events ? module.group_events_queue[0].queue_arn : module.oxbow_queue[0].queue_arn
 
-  auto_tagging_queue_name = "${var.sqs_queue_name}-auto_tagging"
-  auto_tagging_function   = "${var.lambda_function_name}-auto_tagging"
-  auto_tagging_role_name  = "${var.oxbow_lambda_role_name}-auto_tagging"
-  auto_tagging_policy     = "${var.lambda_permissions_policy_name}-auto_tagging"
+  auto_tagging_queue_name = "${var.oxbow.queue_name}-auto_tagging"
+  auto_tagging_function   = "${var.oxbow.lambda_function_name}-auto_tagging"
+  auto_tagging_role_name  = "${var.oxbow.role_name}-auto_tagging"
+  auto_tagging_policy     = "${var.oxbow.policy_name}-auto_tagging"
 
   warehouse_prefix_arn = "${var.warehouse_bucket_arn}/${var.s3_path}"
 
@@ -180,9 +180,9 @@ locals {
 locals {
   name_limits = merge(
     {
-      "lambda_function_name (Lambda, 64)" = [var.lambda_function_name, 64]
-      "sqs_queue_name (SQS, 80)"          = [var.sqs_queue_name, 80]
-      "sqs_queue_name_dl (SQS, 80)"       = [var.sqs_queue_name_dl, 80]
+      "lambda_function_name (Lambda, 64)" = [var.oxbow.lambda_function_name, 64]
+      "sqs_queue_name (SQS, 80)"          = [var.oxbow.queue_name, 80]
+      "sqs_queue_name_dl (SQS, 80)"       = [var.oxbow.dl_queue_name, 80]
     },
     local.enabled.group_events ? {
       "group_events.lambda_function_name (Lambda, 64)" = [var.group_events.lambda_function_name, 64]

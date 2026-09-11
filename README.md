@@ -51,14 +51,18 @@ reports which gates are open.
 module "oxbow" {
   source = "github.com/scribd/terraform-oxbow?ref=v2.0.0"
 
-  warehouse_bucket_arn  = module.warehouse.s3_bucket_arn
-  s3_path               = "catalogs/bronze_monolith"
+  warehouse_bucket_arn = module.warehouse.s3_bucket_arn
+  s3_path              = "catalogs/bronze_monolith"
 
-  lambda_function_name           = "${var.env}-oxbow"
-  lambda_s3_bucket               = var.artifacts_bucket
-  lambda_s3_key                  = "oxbow/oxbow-lambda.zip"
-  oxbow_lambda_role_name         = "${var.env}-oxbow"
-  lambda_permissions_policy_name = "${var.env}-oxbow"
+  oxbow = {
+    lambda_function_name = "${var.env}-oxbow"
+    lambda_s3_bucket     = var.artifacts_bucket
+    lambda_s3_key        = "oxbow/oxbow-lambda.zip"
+    role_name            = "${var.env}-oxbow"
+    policy_name          = "${var.env}-oxbow"
+    queue_name           = "${var.env}-oxbow-queue"
+    dl_queue_name        = "${var.env}-oxbow-queue-dl"
+  }
 
   aws_s3_locking_provider        = "dynamodb"
   rust_log_deltalake_debug_level = "info"
@@ -66,9 +70,6 @@ module "oxbow" {
 
   dynamodb_table_name          = "${var.env}-oxbow-lock"
   logstore_dynamodb_table_name = "${var.env}-delta-logstore"
-
-  sqs_queue_name    = "${var.env}-oxbow-queue"
-  sqs_queue_name_dl = "${var.env}-oxbow-queue-dl"
 
   dead_letter_monitoring = {
     critical         = 2

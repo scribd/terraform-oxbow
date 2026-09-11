@@ -37,25 +37,29 @@ variable "s3_path" {
 # Oxbow lambda
 ################################################################################
 
-variable "lambda_function_name" {
-  type        = string
-  description = "Oxbow lambda function name"
+variable "oxbow" {
+  type = object({
+    lambda_function_name = string
+    lambda_s3_bucket     = string
+    lambda_s3_key        = string
+    role_name            = string
+    policy_name          = string
+    queue_name           = string
+    dl_queue_name        = string
+  })
+  description = <<-EOT
+    The oxbow lambda and the queue that drives it. role_name is the IAM role,
+    shared with the group-events lambda when that stage is on, and policy_name
+    its managed policy. queue_name is the ingest queue, used when the
+    group_events stage is off; the auto-tagging stage derives its own names from
+    these by appending "-auto_tagging".
+  EOT
 }
 
 variable "lambda_description" {
   type        = string
   description = "Oxbow lambda description"
   default     = "Oxbow lambda for converting parquet files to delta tables"
-}
-
-variable "lambda_s3_bucket" {
-  type        = string
-  description = "S3 bucket holding the oxbow lambda package"
-}
-
-variable "lambda_s3_key" {
-  type        = string
-  description = "S3 key of the oxbow lambda package"
 }
 
 variable "lambda_timeout" {
@@ -85,16 +89,6 @@ variable "architectures" {
     condition     = length(var.architectures) == 1 && contains(["x86_64", "arm64"], var.architectures[0])
     error_message = "architectures must be exactly one of [\"x86_64\"] or [\"arm64\"]."
   }
-}
-
-variable "oxbow_lambda_role_name" {
-  type        = string
-  description = "IAM role name shared by the oxbow and group-events lambdas"
-}
-
-variable "lambda_permissions_policy_name" {
-  type        = string
-  description = "IAM policy name for the oxbow lambda permissions"
 }
 
 variable "rust_log_deltalake_debug_level" {
@@ -165,16 +159,6 @@ variable "logstore_dynamodb_table_name" {
 ################################################################################
 # Queues
 ################################################################################
-
-variable "sqs_queue_name" {
-  type        = string
-  description = "Oxbow ingest queue name, used when the group_events stage is off"
-}
-
-variable "sqs_queue_name_dl" {
-  type        = string
-  description = "Oxbow ingest dead letter queue name"
-}
 
 variable "sqs_visibility_timeout_seconds" {
   type        = number
