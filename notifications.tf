@@ -1,5 +1,5 @@
 resource "aws_sns_topic_subscription" "oxbow" {
-  count = local.enabled.sns_delivery ? 1 : 0
+  count = local.enabled.sns_delivery && local.enabled.oxbow ? 1 : 0
 
   topic_arn           = local.sns_topic_arn
   protocol            = "sqs"
@@ -16,9 +16,11 @@ resource "aws_sns_topic_subscription" "oxbow" {
 # hole: bucket names are global, so a same-named bucket in another account could
 # otherwise invoke.
 resource "aws_lambda_permission" "oxbow_from_s3" {
+  count = local.enabled.oxbow ? 1 : 0
+
   statement_id   = "AllowExecutionFromS3Bucket"
   action         = "lambda:InvokeFunction"
-  function_name  = module.oxbow_lambda.lambda_function_arn
+  function_name  = module.oxbow_lambda[0].lambda_function_arn
   principal      = "s3.amazonaws.com"
   source_arn     = var.warehouse_bucket_arn
   source_account = local.warehouse_bucket_account_id

@@ -239,7 +239,7 @@ run "cross_account_warehouse_bucket_is_supported" {
   }
 
   assert {
-    condition     = aws_lambda_permission.oxbow_from_s3.source_account == "210987654321"
+    condition     = one(aws_lambda_permission.oxbow_from_s3).source_account == "210987654321"
     error_message = "The lambda permission must be scoped to the bucket owner too"
   }
 }
@@ -267,8 +267,8 @@ run "lambda_permissions_are_scoped_to_bucket_and_account" {
 
   assert {
     condition = (
-      aws_lambda_permission.oxbow_from_s3.source_arn == "arn:aws:s3:::scribdinc-data-lake-test" &&
-      aws_lambda_permission.oxbow_from_s3.source_account == "123456789012"
+      one(aws_lambda_permission.oxbow_from_s3).source_arn == "arn:aws:s3:::scribdinc-data-lake-test" &&
+      one(aws_lambda_permission.oxbow_from_s3).source_account == "123456789012"
     )
     error_message = "The oxbow invoke permission needs both source_arn and source_account"
   }

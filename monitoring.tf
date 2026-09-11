@@ -1,9 +1,9 @@
 locals {
   dead_letter_queue_names = [
     for name in compact([
-      local.enabled.group_events ? local.fifo_dlq_name : var.oxbow.dl_queue_name,
+      local.enabled.group_events ? local.fifo_dlq_name : (local.oxbow_standard_queue ? var.oxbow.dl_queue_name : ""),
       local.enabled.group_events ? var.group_events.dl_queue_name : "",
-      local.enabled.auto_tagging ? "${local.auto_tagging_queue_name}-dl" : "",
+      local.enabled.auto_tagging ? local.auto_tagging_dlq_name : "",
       local.enabled.glue_create ? var.glue_create.sqs_queue_name_dl : "",
       local.enabled.glue_sync ? var.glue_sync.sqs_queue_name_dl : "",
     ]) : lower(name)

@@ -6,30 +6,29 @@
 ################################################################################
 # Oxbow
 #
-# module.oxbow_lambda has no count, so its targets are indexed on the resource
-# (`...this[0]`). Every stage module is counted, so those targets index the
-# module and move the resource whole (`module.x[0]...this`), which preserves the
-# instance key. Both forms are deliberate; do not "normalise" one into the other.
+# Every module here is counted, so each target indexes the module and moves the
+# resource whole (`module.x[0]...this`), which preserves the instance key. The
+# event source mappings are keyed by for_each, hence the explicit "sqs".
 ################################################################################
 
 moved {
   from = aws_lambda_function.this_lambda
-  to   = module.oxbow_lambda.aws_lambda_function.this[0]
+  to   = module.oxbow_lambda[0].aws_lambda_function.this
 }
 
 moved {
   from = aws_iam_role.oxbow_lambda_role
-  to   = module.oxbow_lambda.aws_iam_role.lambda[0]
+  to   = module.oxbow_lambda[0].aws_iam_role.lambda
 }
 
 moved {
   from = aws_lambda_event_source_mapping.this_lambda_events
-  to   = module.oxbow_lambda.aws_lambda_event_source_mapping.this["sqs"]
+  to   = module.oxbow_lambda[0].aws_lambda_event_source_mapping.this["sqs"]
 }
 
 moved {
   from = aws_iam_policy.this_lambda_permissions
-  to   = aws_iam_policy.oxbow_lambda
+  to   = aws_iam_policy.oxbow_lambda[0]
 }
 
 moved {
@@ -44,7 +43,7 @@ moved {
 
 moved {
   from = aws_lambda_permission.this_lambda_allow_bucket_permissions
-  to   = aws_lambda_permission.oxbow_from_s3
+  to   = aws_lambda_permission.oxbow_from_s3[0]
 }
 
 moved {

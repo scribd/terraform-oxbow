@@ -48,12 +48,14 @@ variable "oxbow" {
     dl_queue_name        = string
   })
   description = <<-EOT
-    The oxbow lambda and the queue that drives it. role_name is the IAM role,
-    shared with the group-events lambda when that stage is on, and policy_name
-    its managed policy. queue_name is the ingest queue, used when the
-    group_events stage is off; the auto-tagging stage derives its own names from
-    these by appending "-auto_tagging".
+    The oxbow lambda and the queue that drives it; null turns the stage off, so
+    the module can deploy auto-tagging or the glue stages on their own.
+    role_name is the IAM role, shared with the group-events lambda when that
+    stage is on, and policy_name its managed policy. queue_name is the ingest
+    queue, used when the group_events stage is off; the auto-tagging stage
+    derives its own names from these unless it sets its own.
   EOT
+  default     = null
 }
 
 variable "lambda_description" {
@@ -268,28 +270,53 @@ variable "group_events" {
     Batch events by table prefix before oxbow sees them. S3 events land on
     queue_name, this lambda groups them onto the FIFO queue, and oxbow consumes
     that instead of the standard queue. ".fifo" is appended to the FIFO names if
-    absent. Shares the oxbow lambda's IAM role.
+    absent. Shares the oxbow lambda's IAM role, and feeds a FIFO queue only
+    oxbow consumes, so it requires the oxbow stage.
   EOT
   default     = null
+
+  validation {
+    condition     = var.group_events == null || var.oxbow != null
+    error_message = "group_events requires the oxbow stage: it shares oxbow's IAM role and feeds a FIFO queue only oxbow consumes."
+  }
 }
 
 variable "auto_tagging" {
   type = object({
     lambda_s3_bucket    = string
     lambda_s3_key       = string
+    function_name       = optional(string)
+    role_name           = optional(string)
+    policy_name         = optional(string)
+    queue_name          = optional(string)
+    dl_queue_name       = optional(string)
     s3_notifies_queue   = optional(bool, false)
     filter_policy       = optional(string)
     filter_policy_scope = optional(string)
   })
   description = <<-EOT
-    Tag objects as they land, on its own queue, lambda and IAM role. Names are
-    derived from the oxbow names with an "-auto_tagging" suffix. This module
+    Tag objects as they land, on its own queue, lambda and IAM role. The name
+    fields default to the oxbow names with an "-auto_tagging" suffix, and are
+    required when the oxbow stage is off since there is then nothing to derive
+    from. dl_queue_name defaults to queue_name plus "-dl". This module
     does not route events to its queue: set sns_delivery, or wire the bucket to
     the autotag_sqs_arn output -- set s3_notifies_queue when you do that, or its
     queue policy will reject S3. The filter fields apply to its own
     subscription, so it can take a narrower slice of the topic than oxbow does.
   EOT
   default     = null
+
+  validation {
+    condition = var.auto_tagging == null || var.oxbow != null || alltrue([
+      for f in [
+        var.auto_tagging.function_name,
+        var.auto_tagging.role_name,
+        var.auto_tagging.policy_name,
+        var.auto_tagging.queue_name,
+      ] : f != null
+    ])
+    error_message = "With the oxbow stage off, auto_tagging must set function_name, role_name, policy_name and queue_name -- there are no oxbow names to derive them from."
+  }
 
   validation {
     condition     = var.auto_tagging == null || var.auto_tagging.filter_policy == null || can(jsondecode(var.auto_tagging.filter_policy))

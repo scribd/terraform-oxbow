@@ -20,6 +20,8 @@ module "oxbow_lambda" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "8.8.0"
 
+  count = local.enabled.oxbow ? 1 : 0
+
   function_name = var.oxbow.lambda_function_name
   description   = var.lambda_description
   handler       = "provided"
@@ -39,7 +41,7 @@ module "oxbow_lambda" {
 
   role_name     = var.oxbow.role_name
   attach_policy = true
-  policy        = aws_iam_policy.oxbow_lambda.arn
+  policy        = aws_iam_policy.oxbow_lambda[0].arn
 
   use_existing_cloudwatch_log_group = !var.manage_lambda_log_groups
   cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
@@ -66,7 +68,7 @@ module "oxbow_queue" {
   source  = "terraform-aws-modules/sqs/aws"
   version = "5.2.2"
 
-  count = local.enabled.group_events ? 0 : 1
+  count = local.oxbow_standard_queue ? 1 : 0
 
   name                       = local.ingest_queue_name
   message_retention_seconds  = var.message_retention_seconds
@@ -90,13 +92,17 @@ module "oxbow_queue" {
 }
 
 resource "aws_iam_policy" "oxbow_lambda" {
+  count = local.enabled.oxbow ? 1 : 0
+
   name        = var.oxbow.policy_name
   description = "Oxbow lambda access to the warehouse prefix, its queues and the Delta lock tables"
-  policy      = data.aws_iam_policy_document.oxbow_lambda.json
+  policy      = data.aws_iam_policy_document.oxbow_lambda[0].json
   tags        = var.tags
 }
 
 data "aws_iam_policy_document" "oxbow_lambda" {
+  count = local.enabled.oxbow ? 1 : 0
+
   statement {
     sid       = "DeltaLockTables"
     effect    = "Allow"
@@ -149,5 +155,5 @@ locals {
   oxbow_lambda_queue_arns = local.enabled.group_events ? [
     module.group_events_queue[0].queue_arn,
     module.oxbow_fifo_queue[0].queue_arn,
-  ] : [module.oxbow_queue[0].queue_arn]
+  ] : (local.oxbow_standard_queue ? [module.oxbow_queue[0].queue_arn] : [])
 }

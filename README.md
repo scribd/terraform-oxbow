@@ -28,12 +28,13 @@ The bucket notification and the two DynamoDB tables are the caller's: this
 module takes their names and points its policies at them.
 ```
 
-Every stage below the core is gated by one variable: **null turns it off, a
+Every stage, the core included, is gated by one variable: **null turns it off, a
 config object turns it on** and carries everything that stage needs. Required
 fields are required by the object type, so a stage cannot be half-configured.
 
 | Variable | null | non-null creates |
 | --- | --- | --- |
+| `oxbow` | no lambda, no ingest queue | the oxbow lambda, its ingest queue and DLQ, its role and policy |
 | `group_events` | oxbow reads its own queue | group-events lambda, its standard queue, the FIFO queue oxbow then reads |
 | `auto_tagging` | — | auto-tagging lambda, queue, own IAM role |
 | `glue_create` | — | glue-create lambda, queue, Athena workgroup and results bucket |
@@ -44,6 +45,18 @@ fields are required by the object type, so a stage cannot be half-configured.
 Each queue a stage creates gets a dead letter queue, and every dead letter queue
 gets a monitor when `dead_letter_monitoring` is set. The `enabled_stages` output
 reports which gates are open.
+
+Two dependencies between stages, both enforced at plan:
+
+- `group_events` requires `oxbow` — it shares oxbow's IAM role and feeds a FIFO
+  queue only oxbow consumes.
+- `auto_tagging` normally derives its names from the oxbow names by appending
+  `-auto_tagging`; with `oxbow = null` it must set `function_name`, `role_name`,
+  `policy_name` and `queue_name` itself.
+
+Everything else composes freely: `glue_create`, `glue_sync` and
+`glue_catalog_table` each stand alone, so the module can manage the Glue side of
+a warehouse whose Delta tables something else writes.
 
 ## Usage
 

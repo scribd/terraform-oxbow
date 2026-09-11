@@ -248,6 +248,7 @@ planning.
 | `enable_bucket_notification` | gone — the caller owns the bucket notification; see above |
 | `enabled_dead_letters_monitoring` + `dl_critical` + `dl_warning` + `dl_ok` + `dl_alert_recipients` + `dl_alert_message` + `tags_monitoring` + `monitoring_query_conditions` | `dead_letter_monitoring = { critical, warning?, ok?, alert_recipients?, alert_message?, tags?, query_conditions? }` |
 | `lambda_function_name` + `lambda_s3_bucket` + `lambda_s3_key` + `oxbow_lambda_role_name` + `lambda_permissions_policy_name` + `sqs_queue_name` + `sqs_queue_name_dl` | `oxbow = { lambda_function_name, lambda_s3_bucket, lambda_s3_key, role_name, policy_name, queue_name, dl_queue_name }` |
+| the oxbow lambda was always created | `oxbow` is now nullable like every other stage; leave it set to keep today's behaviour |
 | `sns_topic_arn = ""` meant "no topic" | `sns_delivery = { topic_arn, filter_policy?, filter_policy_scope? }`, or null |
 
 ### SNS subscription filters
@@ -283,6 +284,9 @@ Other input changes:
 - `warehouse_bucket_account_id`, `manage_lambda_log_groups`,
   `cloudwatch_logs_retention_in_days`, `sqs_managed_sse_enabled` and
   `s3_notifies_ingest_queue` are new.
+- `auto_tagging` gains optional `function_name` / `role_name` / `policy_name` /
+  `queue_name` / `dl_queue_name`. Omit them and the derived names are unchanged;
+  they are required only when `oxbow = null`.
 - `group_events.timeout` / `.memory_size` are new. `lambda_timeout` and
   `lambda_memory_size` never applied to the group-events lambda — it ran on the
   lambda module's defaults of 3s and 128MB, which these now carry explicitly.

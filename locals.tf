@@ -10,6 +10,7 @@ locals {
   # One gate per optional stage. Each stage's config variable is null when the
   # stage is off, so every count and conditional in the module keys off this.
   enabled = {
+    oxbow              = var.oxbow != null
     group_events       = var.group_events != null
     auto_tagging       = var.auto_tagging != null
     glue_catalog_table = var.glue_catalog_table != null
@@ -32,16 +33,25 @@ locals {
   fifo_queue_name = local.enabled.group_events ? "${trimsuffix(var.group_events.fifo_queue_name, ".fifo")}.fifo" : ""
   fifo_dlq_name   = local.enabled.group_events ? "${trimsuffix(var.group_events.fifo_dl_queue_name, ".fifo")}.fifo" : ""
 
-  oxbow_source_queue_name = local.enabled.group_events ? local.fifo_queue_name : var.oxbow.queue_name
-  ingest_queue_name       = local.enabled.group_events ? var.group_events.queue_name : var.oxbow.queue_name
+  # The standard ingest queue belongs to the oxbow path, so it exists only when
+  # oxbow does and grouping is off.
+  oxbow_standard_queue = local.enabled.oxbow && !local.enabled.group_events
 
-  oxbow_source_queue_arn = local.enabled.group_events ? module.oxbow_fifo_queue[0].queue_arn : module.oxbow_queue[0].queue_arn
-  ingest_queue_arn       = local.enabled.group_events ? module.group_events_queue[0].queue_arn : module.oxbow_queue[0].queue_arn
+  oxbow_source_queue_name = local.enabled.group_events ? local.fifo_queue_name : try(var.oxbow.queue_name, null)
+  ingest_queue_name       = local.enabled.group_events ? var.group_events.queue_name : try(var.oxbow.queue_name, null)
 
-  auto_tagging_queue_name = "${var.oxbow.queue_name}-auto_tagging"
-  auto_tagging_function   = "${var.oxbow.lambda_function_name}-auto_tagging"
-  auto_tagging_role_name  = "${var.oxbow.role_name}-auto_tagging"
-  auto_tagging_policy     = "${var.oxbow.policy_name}-auto_tagging"
+  oxbow_source_queue_arn = local.enabled.group_events ? module.oxbow_fifo_queue[0].queue_arn : try(module.oxbow_queue[0].queue_arn, null)
+  ingest_queue_arn       = local.enabled.group_events ? module.group_events_queue[0].queue_arn : try(module.oxbow_queue[0].queue_arn, null)
+
+  # Auto tagging names default to the oxbow names with a suffix, which is how
+  # they have always been derived. Without oxbow there is nothing to derive
+  # from, so its own name fields become required -- see its validation.
+  auto_tagging_suffix     = "-auto_tagging"
+  auto_tagging_function   = local.enabled.auto_tagging ? coalesce(var.auto_tagging.function_name, local.enabled.oxbow ? "${var.oxbow.lambda_function_name}${local.auto_tagging_suffix}" : null) : null
+  auto_tagging_role_name  = local.enabled.auto_tagging ? coalesce(var.auto_tagging.role_name, local.enabled.oxbow ? "${var.oxbow.role_name}${local.auto_tagging_suffix}" : null) : null
+  auto_tagging_policy     = local.enabled.auto_tagging ? coalesce(var.auto_tagging.policy_name, local.enabled.oxbow ? "${var.oxbow.policy_name}${local.auto_tagging_suffix}" : null) : null
+  auto_tagging_queue_name = local.enabled.auto_tagging ? coalesce(var.auto_tagging.queue_name, local.enabled.oxbow ? "${var.oxbow.queue_name}${local.auto_tagging_suffix}" : null) : null
+  auto_tagging_dlq_name   = local.enabled.auto_tagging ? coalesce(var.auto_tagging.dl_queue_name, "${local.auto_tagging_queue_name}-dl") : null
 
   warehouse_prefix_arn = "${var.warehouse_bucket_arn}/${var.s3_path}"
 
@@ -179,11 +189,11 @@ locals {
 # absent here -- an entry that can never fire is one more number to get wrong.
 locals {
   name_limits = merge(
-    {
-      "lambda_function_name (Lambda, 64)" = [var.oxbow.lambda_function_name, 64]
-      "sqs_queue_name (SQS, 80)"          = [var.oxbow.queue_name, 80]
-      "sqs_queue_name_dl (SQS, 80)"       = [var.oxbow.dl_queue_name, 80]
-    },
+    local.enabled.oxbow ? {
+      "oxbow.lambda_function_name (Lambda, 64)" = [var.oxbow.lambda_function_name, 64]
+      "oxbow.queue_name (SQS, 80)"              = [var.oxbow.queue_name, 80]
+      "oxbow.dl_queue_name (SQS, 80)"           = [var.oxbow.dl_queue_name, 80]
+    } : {},
     local.enabled.group_events ? {
       "group_events.lambda_function_name (Lambda, 64)" = [var.group_events.lambda_function_name, 64]
       "group_events.queue_name (SQS, 80)"              = [var.group_events.queue_name, 80]
@@ -194,7 +204,7 @@ locals {
     local.enabled.auto_tagging ? {
       "auto-tagging function name (Lambda, 64)" = [local.auto_tagging_function, 64]
       "auto-tagging queue name (SQS, 80)"       = [local.auto_tagging_queue_name, 80]
-      "auto-tagging DLQ name (SQS, 80)"         = ["${local.auto_tagging_queue_name}-dl", 80]
+      "auto-tagging DLQ name (SQS, 80)"         = [local.auto_tagging_dlq_name, 80]
     } : {},
     local.enabled.glue_create ? {
       "glue_create.lambda_function_name (Lambda, 64)" = [var.glue_create.lambda_function_name, 64]

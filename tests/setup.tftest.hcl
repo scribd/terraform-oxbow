@@ -64,13 +64,13 @@ run "minimal_deployment" {
   command = plan
 
   assert {
-    condition     = module.oxbow_lambda.lambda_function_name == "test-oxbow"
+    condition     = module.oxbow_lambda[0].lambda_function_name == "test-oxbow"
     error_message = "Oxbow function name should come straight from lambda_function_name"
   }
 
   assert {
-    condition     = !anytrue(values(local.enabled))
-    error_message = "Every optional stage must be off when its config variable is null"
+    condition     = !anytrue([for k, v in local.enabled : v if k != "oxbow"])
+    error_message = "Every stage but oxbow must be off when its config variable is null"
   }
 
   assert {

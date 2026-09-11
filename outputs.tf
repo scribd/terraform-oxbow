@@ -1,27 +1,27 @@
 output "lambda_arn" {
   description = "Oxbow lambda ARN"
-  value       = module.oxbow_lambda.lambda_function_arn
+  value       = local.enabled.oxbow ? module.oxbow_lambda[0].lambda_function_arn : ""
 }
 
 output "lambda_role_arn" {
   description = "IAM role ARN shared by the oxbow and group-events lambdas"
-  value       = module.oxbow_lambda.lambda_role_arn
+  value       = local.enabled.oxbow ? module.oxbow_lambda[0].lambda_role_arn : ""
 }
 
 output "sqs_queue_arn" {
-  description = "ARN of the queue oxbow consumes from"
-  value       = local.oxbow_source_queue_arn
+  description = "ARN of the queue oxbow consumes from; empty when the oxbow stage is off"
+  value       = local.oxbow_source_queue_arn == null ? "" : local.oxbow_source_queue_arn
 }
 
 output "ingest_queue_arn" {
-  description = "ARN of the queue S3 or SNS delivers object-created events to"
-  value       = local.ingest_queue_arn
+  description = "ARN of the queue S3 or SNS delivers object-created events to; empty when the oxbow stage is off"
+  value       = local.ingest_queue_arn == null ? "" : local.ingest_queue_arn
 }
 
 output "dead_letter_queue_arns" {
   description = "ARNs of every dead letter queue this module creates"
   value = compact([
-    local.enabled.group_events ? module.oxbow_fifo_queue[0].dead_letter_queue_arn : module.oxbow_queue[0].dead_letter_queue_arn,
+    local.enabled.group_events ? module.oxbow_fifo_queue[0].dead_letter_queue_arn : (local.oxbow_standard_queue ? module.oxbow_queue[0].dead_letter_queue_arn : ""),
     local.enabled.group_events ? module.group_events_queue[0].dead_letter_queue_arn : "",
     local.enabled.auto_tagging ? module.auto_tagging_queue[0].dead_letter_queue_arn : "",
     local.enabled.glue_create ? module.glue_create_queue[0].dead_letter_queue_arn : "",

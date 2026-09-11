@@ -34,7 +34,7 @@ module "group_events_lambda" {
   # Shares the oxbow role, which is why that role carries this function's log
   # group in its policy statements.
   create_role = false
-  lambda_role = module.oxbow_lambda.lambda_role_arn
+  lambda_role = module.oxbow_lambda[0].lambda_role_arn
 
   use_existing_cloudwatch_log_group = !var.manage_lambda_log_groups
   cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
