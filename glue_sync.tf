@@ -1,99 +1,123 @@
-data "aws_iam_policy_document" "glue_sync_sqs" {
+# Optional glue-sync stage: keeps existing Glue catalog tables in step with the
+# Delta tables oxbow writes.
+
+module "glue_sync_lambda" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "8.8.0"
+
   count = var.enable_glue_sync ? 1 : 0
 
-  statement {
-    effect = "Allow"
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-    actions   = ["sqs:SendMessage", "sqs:ReceiveMessage"]
-    resources = ["arn:aws:sqs:*:*:${var.glue_sync_config.sqs_queue_name}"]
-    condition {
-      test     = "ArnEquals"
-      variable = "aws:SourceArn"
-      values   = [var.glue_sync_config.sns_topic_arn]
+  function_name = var.glue_sync_config.lambda_function_name
+  description   = "Sync tables in the AWS Glue catalog based on the table prefix"
+  handler       = "provided"
+  runtime       = "provided.al2023"
+  architectures = var.architectures
+
+  create_package = false
+  s3_existing_package = {
+    bucket = var.glue_sync_config.lambda_s3_bucket
+    key    = var.glue_sync_config.lambda_s3_key
+  }
+
+  memory_size = var.lambda_memory_size
+  timeout     = var.lambda_timeout
+
+  environment_variables = {
+    RUST_LOG            = var.rust_log_oxbow_debug_level
+    GLUE_PATH_REGEX     = var.glue_sync_config.path_regex
+    UNWRAP_SNS_ENVELOPE = true
+  }
+
+  role_name     = var.glue_sync_config.iam_role_name
+  attach_policy = true
+  policy        = aws_iam_policy.glue_sync[0].arn
+
+  use_existing_cloudwatch_log_group = !var.manage_lambda_log_groups
+  cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
+
+  event_source_mapping = {
+    sqs = {
+      event_source_arn = module.glue_sync_queue[0].queue_arn
     }
   }
-}
+  create_current_version_allowed_triggers = false
 
-data "aws_iam_policy_document" "glue_sync_sqs_dl" {
-  count = var.enable_glue_sync ? 1 : 0
-
-  statement {
-    effect = "Allow"
-    principals {
-      type        = "AWS"
-      identifiers = ["*"]
-    }
-    actions   = ["sqs:SendMessage", "sqs:ReceiveMessage"]
-    resources = ["arn:aws:sqs:*:*:${var.glue_sync_config.sqs_queue_name_dl}"]
-    condition {
-      test     = "ForAllValues:StringEquals"
-      variable = "aws:SourceArn"
-      values   = ["arn:aws:sqs:*:*:${var.glue_sync_config.sqs_queue_name}"]
-    }
-  }
-}
-
-resource "aws_sqs_queue" "glue_sync" {
-  count                      = var.enable_glue_sync ? 1 : 0
-  message_retention_seconds  = var.message_retention_seconds
-  name                       = var.glue_sync_config.sqs_queue_name
-  policy                     = data.aws_iam_policy_document.glue_sync_sqs[0].json
-  visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
-  delay_seconds              = var.sqs_delay_seconds
-  redrive_policy = jsonencode({
-    deadLetterTargetArn = aws_sqs_queue.glue_sync_dl[0].arn
-    maxReceiveCount     = var.sqs_redrive_policy_maxReceiveCount
-  })
   tags = var.tags
 }
 
-resource "aws_sqs_queue" "glue_sync_dl" {
-  count                     = var.enable_glue_sync ? 1 : 0
-  message_retention_seconds = var.message_retention_seconds
-  name                      = var.glue_sync_config.sqs_queue_name_dl
-  policy                    = data.aws_iam_policy_document.glue_sync_sqs_dl[0].json
-  tags                      = var.tags
-}
+module "glue_sync_queue" {
+  source  = "terraform-aws-modules/sqs/aws"
+  version = "5.2.2"
 
-resource "aws_sqs_queue_redrive_allow_policy" "glue_syncredrive_allow_policy" {
   count = var.enable_glue_sync ? 1 : 0
 
-  queue_url = aws_sqs_queue.glue_sync_dl[0].id
-  redrive_allow_policy = jsonencode({
-    redrivePermission = "byQueue",
-    sourceQueueArns   = [aws_sqs_queue.glue_sync[0].arn]
-  })
+  name                       = var.glue_sync_config.sqs_queue_name
+  message_retention_seconds  = var.message_retention_seconds
+  visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
+  delay_seconds              = var.sqs_delay_seconds
+  sqs_managed_sse_enabled    = var.sqs_managed_sse_enabled
+
+  create_queue_policy = true
+  queue_policy_statements = {
+    sns_send = {
+      effect     = "Allow"
+      actions    = ["sqs:SendMessage"]
+      principals = [{ type = "Service", identifiers = ["sns.amazonaws.com"] }]
+      condition = [{
+        test     = "ArnEquals"
+        variable = "aws:SourceArn"
+        values   = [var.glue_sync_config.sns_topic_arn]
+      }]
+    }
+  }
+
+  create_dlq                     = true
+  dlq_name                       = var.glue_sync_config.sqs_queue_name_dl
+  dlq_delay_seconds              = 0
+  dlq_visibility_timeout_seconds = 30
+  redrive_policy                 = { maxReceiveCount = var.sqs_redrive_policy_maxReceiveCount }
+
+  create_dlq_queue_policy = true
+  dlq_queue_policy_statements = {
+    dlq_send = {
+      sid        = "DLQSendMessages"
+      effect     = "Allow"
+      actions    = ["sqs:SendMessage"]
+      principals = [{ type = "AWS", identifiers = ["*"] }]
+      condition = [{
+        test     = "ForAllValues:StringEquals"
+        variable = "aws:SourceArn"
+        values   = ["arn:${local.partition}:sqs:${local.region}:${local.account_id}:${var.glue_sync_config.sqs_queue_name}"]
+      }]
+    }
+  }
+
+  tags = var.tags
 }
 
-resource "aws_sns_topic_subscription" "glue_sync_sns_sub" {
-  count               = var.enable_glue_sync ? 1 : 0
-  filter_policy       = var.glue_sync_config.sns_subcription_filter_policy
-  filter_policy_scope = var.glue_sync_config.filter_policy_scope
+resource "aws_sns_topic_subscription" "glue_sync" {
+  count = var.enable_glue_sync ? 1 : 0
+
+  # Empty strings are rejected by the provider; absent means "no filter".
+  filter_policy       = var.glue_sync_config.sns_subcription_filter_policy != "" ? var.glue_sync_config.sns_subcription_filter_policy : null
+  filter_policy_scope = var.glue_sync_config.filter_policy_scope != "" ? var.glue_sync_config.filter_policy_scope : null
   topic_arn           = var.glue_sync_config.sns_topic_arn
   protocol            = "sqs"
-  endpoint            = aws_sqs_queue.glue_sync[0].arn
+  endpoint            = module.glue_sync_queue[0].queue_arn
 }
 
-data "aws_iam_policy_document" "glue_sync_assume" {
+resource "aws_iam_policy" "glue_sync" {
   count = var.enable_glue_sync ? 1 : 0
 
-  statement {
-    effect = "Allow"
-    principals {
-      type        = "Service"
-      identifiers = ["lambda.amazonaws.com"]
-    }
-    actions = [
-      "sts:AssumeRole",
-    ]
-  }
+  name        = var.glue_sync_config.iam_policy_name
+  description = "Glue sync policy allows access to Glue and the warehouse prefix"
+  policy      = data.aws_iam_policy_document.glue_sync[0].json
+  tags        = var.tags
 }
 
 data "aws_iam_policy_document" "glue_sync" {
   count = var.enable_glue_sync ? 1 : 0
+
   statement {
     sid    = "GlueAllowTables"
     effect = "Allow"
@@ -102,100 +126,42 @@ data "aws_iam_policy_document" "glue_sync" {
       "glue:GetTables",
       "glue:GetPartitions",
       "glue:CreateTable",
-      "glue:UpdateTable"
+      "glue:UpdateTable",
     ]
-    resources = [
-      "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:catalog",
-      "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:database/*",
-      "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/*"
-    ]
+    resources = local.glue_catalog_resources
   }
+
   statement {
-    sid    = "GlueCatalogAllowDatabases"
-    effect = "Allow"
-    actions = [
-      "glue:GetDatabase",
-      "glue:GetDatabases",
-      "glue:CreateDatabase"
-    ]
-    resources = [
-      "*"
-    ]
-  }
-  statement {
-    sid    = "TableExtLocS3RO"
-    effect = "Allow"
-    actions = [
-      "s3:GetObject",
-      "s3:GetObjectTagging",
-      "s3:GetObjectVersion",
-      "s3:GetBucketLocation",
-      "s3:ListBucket",
-      "s3:ListBucketVersions"
-    ]
-    resources = [
-      var.warehouse_bucket_arn,
-      "${var.warehouse_bucket_arn}/${var.s3_path}/*"
-    ]
-  }
-  statement {
+    sid       = "GlueCatalogAllowDatabases"
     effect    = "Allow"
-    actions   = ["sqs:*"]
-    resources = [aws_sqs_queue.glue_sync[0].arn]
+    actions   = ["glue:GetDatabase", "glue:GetDatabases", "glue:CreateDatabase"]
+    resources = local.glue_catalog_resources
   }
+
   statement {
+    sid       = "TableExtLocS3RO"
+    effect    = "Allow"
+    actions   = ["s3:GetObject", "s3:GetObjectTagging", "s3:GetObjectVersion"]
+    resources = ["${local.warehouse_prefix_arn}/*"]
+  }
+
+  statement {
+    sid       = "TableExtLocS3List"
+    effect    = "Allow"
+    actions   = ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketVersions"]
+    resources = [var.warehouse_bucket_arn]
+  }
+
+  statement {
+    sid    = "ConsumeQueue"
     effect = "Allow"
     actions = [
-      "logs:CreateLogGroup",
-      "logs:CreateLogStream",
-      "logs:PutLogEvents"
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:GetQueueAttributes",
+      "sqs:GetQueueUrl",
+      "sqs:ChangeMessageVisibility",
     ]
-    resources = ["*"]
+    resources = [module.glue_sync_queue[0].queue_arn]
   }
-}
-
-resource "aws_iam_policy" "glue_sync_managed" {
-  count = var.enable_glue_sync ? 1 : 0
-
-  name        = var.glue_sync_config.iam_policy_name
-  description = "Glue create policy allows access to Athena and S3"
-  policy      = data.aws_iam_policy_document.glue_sync[0].json
-  tags        = var.tags
-}
-
-resource "aws_iam_role" "glue_sync" {
-  count = var.enable_glue_sync ? 1 : 0
-
-  name                = var.glue_sync_config.iam_role_name
-  assume_role_policy  = data.aws_iam_policy_document.glue_sync_assume[0].json
-  managed_policy_arns = [aws_iam_policy.glue_sync_managed[0].arn]
-  tags                = var.tags
-}
-
-resource "aws_lambda_function" "glue_sync_lambda" {
-  count         = var.enable_glue_sync ? 1 : 0
-  architectures = var.architectures
-  description   = "Greate tables in AWS Glue catalog based on the table prefix"
-  s3_key        = var.glue_sync_config.lambda_s3_key
-  s3_bucket     = var.glue_sync_config.lambda_s3_bucket
-  function_name = var.glue_sync_config.lambda_function_name
-  role          = aws_iam_role.glue_sync[0].arn
-  handler       = "provided"
-  runtime       = "provided.al2023"
-  memory_size   = var.lambda_memory_size
-  timeout       = var.lambda_timeout
-  environment {
-    variables = {
-      RUST_LOG            = var.rust_log_oxbow_debug_level
-      GLUE_PATH_REGEX     = var.glue_sync_config.path_regex
-      UNWRAP_SNS_ENVELOPE = true
-    }
-  }
-}
-
-resource "aws_lambda_event_source_mapping" "glue_sync" {
-  count = var.enable_glue_sync ? 1 : 0
-
-  event_source_arn = aws_sqs_queue.glue_sync[0].arn
-  function_name    = aws_lambda_function.glue_sync_lambda[0].arn
 }

@@ -1,242 +1,164 @@
-# This is the optional Autotagging feature.
+# Optional auto-tagging stage: tags objects as they land, on its own queue and
+# its own role so it can be enabled independently of oxbow.
 
-resource "aws_lambda_function" "auto_tagging" {
-  count                          = var.enable_auto_tagging == true ? 1 : 0
-  architectures                  = var.architectures
-  description                    = var.lambda_description
-  s3_key                         = var.auto_tagging_s3_key
-  s3_bucket                      = var.auto_tagging_s3_bucket
-  function_name                  = "${var.lambda_function_name}-auto_tagging"
-  role                           = aws_iam_role.auto_tagging_lambda[0].arn
-  handler                        = "provided"
-  runtime                        = "provided.al2023"
+module "auto_tagging_lambda" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "8.8.0"
+
+  count = var.enable_auto_tagging ? 1 : 0
+
+  function_name = local.auto_tagging_function
+  description   = var.lambda_description
+  handler       = "provided"
+  runtime       = "provided.al2023"
+  architectures = var.architectures
+
+  create_package = false
+  s3_existing_package = {
+    bucket = var.auto_tagging_s3_bucket
+    key    = var.auto_tagging_s3_key
+  }
+
   memory_size                    = var.lambda_memory_size
   timeout                        = var.lambda_timeout
   reserved_concurrent_executions = var.lambda_reserved_concurrent_executions
 
-  environment {
-    variables = {
-      UNWRAP_SNS_ENVELOPE = var.sns_topic_arn == "" ? false : true
-    }
+  environment_variables = {
+    UNWRAP_SNS_ENVELOPE = local.from_sns
   }
 
+  role_name     = local.auto_tagging_role_name
+  attach_policy = true
+  policy        = aws_iam_policy.auto_tagging[0].arn
+
+  use_existing_cloudwatch_log_group = !var.manage_lambda_log_groups
+  cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
+
+  event_source_mapping = {
+    sqs = {
+      event_source_arn = module.auto_tagging_queue[0].queue_arn
+    }
+  }
+  create_current_version_allowed_triggers = false
+
   tags = var.tags
 }
 
-resource "aws_sqs_queue" "auto_tagging_dl" {
-  count = var.enable_auto_tagging == true ? 1 : 0
+module "auto_tagging_queue" {
+  source  = "terraform-aws-modules/sqs/aws"
+  version = "5.2.2"
 
-  name   = "${var.sqs_queue_name}-auto_tagging-dl"
-  policy = data.aws_iam_policy_document.auto_tagging_sqs_dl[0].json
+  count = var.enable_auto_tagging ? 1 : 0
 
-  tags = var.tags
-}
-
-resource "aws_sqs_queue" "auto_tagging" {
-  count = var.enable_auto_tagging == true ? 1 : 0
-
-  name                       = "${var.sqs_queue_name}-auto_tagging"
-  policy                     = var.sns_topic_arn == "" ? data.aws_iam_policy_document.auto_tagging_sqs[0].json : data.aws_iam_policy_document.auto_tagging_sns[0].json
+  name                       = local.auto_tagging_queue_name
+  message_retention_seconds  = var.message_retention_seconds
   visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
   delay_seconds              = var.sqs_delay_seconds
+  sqs_managed_sse_enabled    = var.sqs_managed_sse_enabled
 
-  redrive_policy = jsonencode({
-    deadLetterTargetArn = aws_sqs_queue.auto_tagging_dl[0].arn
-    maxReceiveCount     = var.sqs_redrive_policy_maxReceiveCount
-  })
+  create_queue_policy     = true
+  queue_policy_statements = local.ingest_queue_policy_statements
+
+  create_dlq                     = true
+  dlq_name                       = "${local.auto_tagging_queue_name}-dl"
+  dlq_delay_seconds              = 0
+  dlq_visibility_timeout_seconds = 30
+  redrive_policy                 = { maxReceiveCount = var.sqs_redrive_policy_maxReceiveCount }
+
+  create_dlq_queue_policy = true
+  dlq_queue_policy_statements = {
+    dlq_send = {
+      sid        = "DLQSendMessages"
+      effect     = "Allow"
+      actions    = ["sqs:SendMessage"]
+      principals = [{ type = "AWS", identifiers = ["*"] }]
+      condition = [{
+        test     = "ForAllValues:StringEquals"
+        variable = "aws:SourceArn"
+        values   = ["arn:${local.partition}:sqs:${local.region}:${local.account_id}:${local.auto_tagging_queue_name}"]
+      }]
+    }
+  }
 
   tags = var.tags
 }
 
 resource "aws_sns_topic_subscription" "auto_tagging" {
-  count     = var.enable_auto_tagging == true ? var.sns_topic_arn == "" ? 0 : 1 : 0
+  count = var.enable_auto_tagging && local.from_sns ? 1 : 0
+
   topic_arn = var.sns_topic_arn
   protocol  = "sqs"
-  endpoint  = aws_sqs_queue.auto_tagging[0].arn
+  endpoint  = module.auto_tagging_queue[0].queue_arn
 }
-
-resource "aws_lambda_event_source_mapping" "auto_tagging" {
-  count = var.enable_auto_tagging == true ? 1 : 0
-
-  event_source_arn = aws_sqs_queue.auto_tagging[0].arn
-  function_name    = aws_lambda_function.auto_tagging[0].arn
-}
-
 
 resource "aws_lambda_permission" "auto_tagging" {
-  count = var.enable_auto_tagging == true ? 1 : 0
+  count = var.enable_auto_tagging ? 1 : 0
 
   statement_id  = "AllowExecutionFromS3Bucket"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.auto_tagging[0].arn
+  function_name = module.auto_tagging_lambda[0].lambda_function_arn
   principal     = "s3.amazonaws.com"
   source_arn    = var.warehouse_bucket_arn
 }
 
-### policies
-data "aws_iam_policy_document" "auto_tagging_sqs" {
-  count = var.enable_auto_tagging == true ? 1 : 0
+resource "aws_iam_policy" "auto_tagging" {
+  count = var.enable_auto_tagging ? 1 : 0
 
-  statement {
-    effect = "Allow"
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-    actions = ["sqs:SendMessage"]
-    # Hard-coding an ARN like syntax here because of the dependency cycle
-    resources = [
-      "arn:aws:sqs:*:*:${var.sqs_queue_name}-auto_tagging",
-    ]
-    condition {
-      test     = "ArnEquals"
-      variable = "aws:SourceArn"
-      values   = [var.warehouse_bucket_arn]
-    }
-  }
+  name        = local.auto_tagging_policy
+  description = "Auto-tagging lambda access to the warehouse prefix, its queue and the Delta lock tables"
+  policy      = data.aws_iam_policy_document.auto_tagging[0].json
+  tags        = var.tags
 }
 
-data "aws_iam_policy_document" "auto_tagging_sns" {
-  count = var.enable_auto_tagging == true ? var.sns_topic_arn == "" ? 0 : 1 : 0
+data "aws_iam_policy_document" "auto_tagging" {
+  count = var.enable_auto_tagging ? 1 : 0
 
   statement {
+    sid    = "DeltaLockTables"
     effect = "Allow"
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-    actions   = ["sqs:SendMessage"]
-    resources = ["arn:aws:sqs:*:*:${var.sqs_queue_name}-auto_tagging", ]
-    condition {
-      test     = "ArnEquals"
-      variable = "aws:SourceArn"
-      values   = [var.sns_topic_arn]
-    }
-  }
-
-}
-
-data "aws_iam_policy_document" "auto_tagging_sqs_dl" {
-  count = var.enable_auto_tagging == true ? 1 : 0
-
-  statement {
-    sid    = "DLQSendMessages"
-    effect = "Allow"
-    principals {
-      type        = "AWS"
-      identifiers = ["*"]
-    }
     actions = [
-      "sqs:SendMessage"
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:Query",
+      "dynamodb:DescribeTable",
     ]
-    resources = [
-      "${var.sqs_queue_name}-auto_tagging-dl",
-    ]
-    condition {
-      test     = "ForAllValues:StringEquals"
-      variable = "aws:SourceArn"
-      values = [
-        "arn:aws:sqs:*:*:${var.sqs_queue_name}-auto_tagging"
-      ]
-    }
+    resources = [aws_dynamodb_table.oxbow_locking.arn, local.logstore_table_arn]
   }
-}
-
-### IAM role
-data "aws_iam_policy_document" "auto_tagging_assume_role" {
-  count = var.enable_auto_tagging == true ? 1 : 0
 
   statement {
+    sid    = "WarehousePrefixReadWrite"
     effect = "Allow"
-    principals {
-      type        = "Service"
-      identifiers = ["lambda.amazonaws.com"]
-    }
-    actions = [
-      "sts:AssumeRole",
-    ]
-  }
-}
-
-
-resource "aws_iam_role" "auto_tagging_lambda" {
-  count = var.enable_auto_tagging == true ? 1 : 0
-
-  name                = "${var.oxbow_lambda_role_name}-auto_tagging"
-  assume_role_policy  = data.aws_iam_policy_document.auto_tagging_assume_role[0].json
-  managed_policy_arns = [aws_iam_policy.auto_tagging_lambda[0].arn]
-
-  tags = var.tags
-}
-
-resource "aws_iam_policy" "auto_tagging_lambda" {
-  count = var.enable_auto_tagging == true ? 1 : 0
-
-  name   = "${var.lambda_permissions_policy_name}-auto_tagging"
-  policy = data.aws_iam_policy_document.auto_tagging_lambda[0].json
-}
-
-
-data "aws_iam_policy_document" "auto_tagging_lambda" {
-  count = var.enable_auto_tagging == true ? 1 : 0
-
-  statement {
-    sid = "dynamodb"
-    actions = [
-      "dynamodb:*",
-    ]
-    resources = [aws_dynamodb_table.this_oxbow_locking.arn, "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.logstore_dynamodb_table_name}"]
-  }
-  statement {
-    sid = "s3"
     actions = [
       "s3:GetObject",
       "s3:GetObjectTagging",
       "s3:GetObjectVersion",
-      "s3:GetBucketLocation",
-      "s3:ListBucket",
-      "s3:ListBucketVersions",
       "s3:PutObject",
-      "s3:DeleteObject",
       "s3:PutObjectTagging",
+      "s3:DeleteObject",
       "s3:DeleteObjectTagging",
     ]
-    resources = [
-      "${var.warehouse_bucket_arn}/${var.s3_path}",
-      "${var.warehouse_bucket_arn}/${var.s3_path}/*"
-    ]
-  }
-  statement {
-    sid = "s3read"
-    actions = [
-      "s3:GetObject",
-      "s3:GetObjectTagging",
-      "s3:GetObjectVersion",
-      "s3:GetBucketLocation",
-      "s3:ListBucket",
-      "s3:ListBucketVersions",
-    ]
-    resources = [
-      var.warehouse_bucket_arn,
-      "${var.warehouse_bucket_arn}/*"
-    ]
-  }
-  statement {
-    sid     = "sqs"
-    actions = ["sqs:*"]
-    resources = [
-      aws_sqs_queue.auto_tagging[0].arn,
-      aws_sqs_queue.auto_tagging_dl[0].arn,
-    ]
+    resources = ["${local.warehouse_prefix_arn}/*"]
   }
 
   statement {
-    sid = "logs"
+    sid       = "WarehouseBucketList"
+    effect    = "Allow"
+    actions   = ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketVersions"]
+    resources = [var.warehouse_bucket_arn]
+  }
+
+  statement {
+    sid    = "ConsumeQueue"
+    effect = "Allow"
     actions = [
-      "logs:CreateLogGroup",
-      "logs:CreateLogStream",
-      "logs:PutLogEvents"
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:GetQueueAttributes",
+      "sqs:GetQueueUrl",
+      "sqs:ChangeMessageVisibility",
     ]
-    resources = ["*"]
+    resources = [module.auto_tagging_queue[0].queue_arn]
   }
 }

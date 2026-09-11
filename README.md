@@ -1,81 +1,122 @@
 # terraform-oxbow
-*Terraform module to manage oxbow Lambda and its components.
-We can have the following components in AWS:
-1. Lambda
-2. SQS 
-3. SQS dead letters
-4. IAM policy
-5. S3 bucket notifications
-6. Dynamo DB table
-7. Glue catalog
-8. Glue table
 
-### examples:
-if we need Glue catalog and table
-```
-enable_aws_glue_catalog_table = true
+OpenTofu module for the oxbow pipeline: parquet objects landing in a warehouse
+bucket are turned into Delta tables, with optional event grouping, object
+auto-tagging, Glue catalog creation and sync, and Datadog dead-letter alerting.
+
+The AWS primitives come from the published `terraform-aws-modules` lambda, sqs
+and s3-bucket modules. Requires OpenTofu >= 1.12, the AWS provider >= 6.42 and
+the Datadog provider >= 4.0.
+
+Upgrading from a release before the module rewrite? Read [UPGRADING.md](UPGRADING.md)
+first — it is a no-downtime upgrade, but it is not a no-op plan.
+
+## Shape of the pipeline
 
 ```
-if we need s3 bucket notification 
+                     enable_group_events = false
+S3 (or SNS) ──► oxbow queue ──► oxbow lambda ──► Delta table
+                     │
+                     └──► DLQ ──► Datadog monitor
+
+                     enable_group_events = true
+S3 (or SNS) ──► group queue ──► group-events lambda ──► FIFO queue ──► oxbow lambda
+                     │                                       │
+                     └──► DLQ                                └──► DLQ
 ```
-enable_bucket_notification = true
-```
-if we need advanced Oxbow lambda setup for multiple table filtered optimization
-```
-enable_group_events = true
-```
 
-this is a good start
-```
-module "terraform-oxbow" {
-  source = ""
+Every stage below the core is independently switchable, and each one that has a
+queue gets a dead letter queue and, when `enabled_dead_letters_monitoring` is
+on, a Datadog monitor.
 
-  enable_aws_glue_catalog_table           = true
-  enable_bucket_notification              = false
+| Toggle | Creates |
+| --- | --- |
+| `enable_group_events` | group-events lambda, its standard queue, the FIFO queue oxbow then reads |
+| `enable_auto_tagging` | auto-tagging lambda, queue, own IAM role |
+| `enable_glue_create` | glue-create lambda, queue, Athena workgroup and results bucket |
+| `enable_glue_sync` | glue-sync lambda and queue |
+| `enable_aws_glue_catalog_table` | a Glue catalog table over the parquet location |
+| `enable_bucket_notification` | the warehouse bucket's notification configuration |
+| `enabled_dead_letters_monitoring` | one Datadog monitor per dead letter queue |
 
+## Usage
 
-  warehouse_bucket_arn  = ""
-  warehouse_bucket_name = ""
+```hcl
+module "oxbow" {
+  source = "github.com/scribd/terraform-oxbow?ref=v2.0.0"
 
-  # bucket notification because of limits is configured in file s3_bucket_notification_configuration.tf
+  warehouse_bucket_arn  = module.warehouse.s3_bucket_arn
+  warehouse_bucket_name = module.warehouse.s3_bucket_id
+  s3_path               = "catalogs/bronze_monolith"
 
-  # the place where we store files
-  s3_path = ""
-  lambda_function_name            = ""
-  lambda_description              = ""
-  lambda_s3_key                   = ""
-  lambda_s3_bucket                = ""
-  lambda_reserved_concurrent_executions = 1
-  lambda_permissions_policy_name        = ""
-  rust_log_deltalake_debug_level        = "debug"
-  rust_log_oxbow_debug_level            = "debug"
+  lambda_function_name           = "${var.env}-oxbow"
+  lambda_s3_bucket               = var.artifacts_bucket
+  lambda_s3_key                  = "oxbow/oxbow-lambda.zip"
+  oxbow_lambda_role_name         = "${var.env}-oxbow"
+  lambda_permissions_policy_name = "${var.env}-oxbow"
 
-  sqs_queue_name      = "${var.env}--queue"
-  sqs_queue_name_dl   = "${var.env}--queue-dl"
-  dynamodb_table_name = "${var.env}-oxbow-lock"
-  glue_database_name     = ""
-  glue_table_name        = ""
-  glue_location_uri      = ""
-  glue_table_description = ""
-  aws_s3_locking_provider = "dynamodb"
+  aws_s3_locking_provider        = "dynamodb"
+  rust_log_deltalake_debug_level = "info"
+  rust_log_oxbow_debug_level     = "info"
+
+  dynamodb_table_name          = "${var.env}-oxbow-lock"
+  logstore_dynamodb_table_name = "${var.env}-delta-logstore"
+
+  sqs_queue_name    = "${var.env}-oxbow-queue"
+  sqs_queue_name_dl = "${var.env}-oxbow-queue-dl"
+
+  enable_bucket_notification = true
 
   enabled_dead_letters_monitoring = true
-  dl_alert_recipients             = ["@slack-chanel"]
+  dl_alert_recipients             = ["@slack-data-platform"]
   dl_warning                      = 1
   dl_critical                     = 2
-  tags_monitoring                 = ["slack-chanel", "env:${var.env}", "service:${var.env}-project-name"]
+  tags_monitoring                 = ["env:${var.env}", "service:oxbow"]
 
-  tags = merge({ project = "project_name" }, module.warehouse_labels.tags)
+  tags = module.warehouse_labels.tags
 }
 ```
 
+`enable_bucket_notification` writes the bucket's *entire* notification
+configuration, and S3 allows only one per bucket. If anything else already owns
+that bucket's notifications, leave this off and add the queue over there — the
+queue ARN to point at is the `ingest_queue_arn` output.
 
+## Event delivery
 
-### Important to know:
-Due to Terraform AWS S3 bucket notifications limitation we can have just one S3 bucket notification configuration per AWS account.
-`
-S3 Buckets only support a single notification configuration. Declaring multiple aws_s3_bucket_notification resources to the same S3 Bucket will cause a perpetual difference in configuration. See the example "Trigger multiple Lambda functions" for an option.
-`
-https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_notification
+Leave `sns_topic_arn` empty and S3 notifies the ingest queue directly. Set it
+and the module subscribes the ingest queue to the topic instead, and sets
+`UNWRAP_SNS_ENVELOPE` on whichever lambda reads the envelope first — the
+group-events lambda when grouping is on, oxbow otherwise. The queue policy
+follows: it admits `s3.amazonaws.com` scoped to the bucket and account, or
+`sns.amazonaws.com` scoped to the topic.
+
+## Naming limits
+
+Several names are derived rather than passed in (`<lambda_function_name>-auto_tagging`,
+`<sqs_queue_name>-auto_tagging-dl`). AWS enforces Lambda and IAM name limits at
+*apply*, not at plan, so an over-long derived name fails partway through an
+apply. The module checks every name it will create against its own limit at
+plan time and fails with the offending name and its length.
+
+## Lambda log groups
+
+`manage_lambda_log_groups` (default `true`) has each lambda's CloudWatch log
+group created by OpenTofu, which is what lets the logs IAM policy be scoped to
+that one group instead of `*`. A deployment whose log groups already exist —
+created implicitly by the Lambda service on first invocation — must either set
+it to `false` or import them; see [UPGRADING.md](UPGRADING.md).
+
+## Tests
+
+```
+tofu init -backend=false
+tofu test
+```
+
+Both providers are mocked, so the suite needs no AWS or Datadog credentials and
+runs on every push. It covers the toggle matrix, the event-delivery wiring, the
+derived names and their limits, and the input validations.
+
 ##
 Made with ❤️ by the Platform Infra Team.

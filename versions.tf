@@ -1,8 +1,14 @@
 terraform {
+  required_version = ">= 1.12.0"
+
   required_providers {
-    # added datadog here because without it terrafrom is looking for provider in hashicorp/datadog - what is wrong
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 6.42"
+    }
     datadog = {
-      source = "datadog/datadog"
+      source  = "DataDog/datadog"
+      version = ">= 4.0"
     }
   }
 }
