@@ -22,19 +22,16 @@ resource "aws_lambda_permission" "oxbow_from_s3" {
   source_account = local.warehouse_bucket_account_id
 }
 
-# S3 supports a single notification configuration per bucket, so a bucket whose
-# configuration is owned elsewhere must leave this off and add the queue there.
-# https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_notification
 resource "aws_s3_bucket_notification" "warehouse" {
-  count = var.enable_bucket_notification ? 1 : 0
+  count = local.enabled.bucket_notification ? 1 : 0
 
   bucket = var.warehouse_bucket_name
 
   queue {
     queue_arn     = local.ingest_queue_arn
-    events        = ["s3:ObjectCreated:*"]
-    filter_suffix = ".parquet"
-    filter_prefix = "${var.s3_path}/"
+    events        = var.bucket_notification.events
+    filter_prefix = coalesce(var.bucket_notification.filter_prefix, "${var.s3_path}/")
+    filter_suffix = var.bucket_notification.filter_suffix
   }
 
   # S3 rejects a destination it cannot yet write to, and the queue policy is now
@@ -43,18 +40,18 @@ resource "aws_s3_bucket_notification" "warehouse" {
 }
 
 resource "aws_glue_catalog_table" "oxbow" {
-  count = var.enable_aws_glue_catalog_table ? 1 : 0
+  count = local.enabled.glue_catalog_table ? 1 : 0
 
-  name          = var.glue_table_name
-  description   = var.glue_table_description
-  database_name = var.glue_database_name
+  name          = var.glue_catalog_table.table_name
+  description   = var.glue_catalog_table.description
+  database_name = var.glue_catalog_table.database_name
 
   parameters = {
     "classification" = "parquet"
   }
 
   storage_descriptor {
-    location      = var.glue_location_uri
+    location      = var.glue_catalog_table.location_uri
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -66,10 +63,10 @@ resource "aws_glue_catalog_table" "oxbow" {
     }
 
     dynamic "columns" {
-      for_each = var.parquet_schema
+      for_each = var.glue_catalog_table.columns
       content {
         name       = columns.value.name
-        parameters = try(columns.value.parameters, null)
+        parameters = columns.value.parameters
         type       = columns.value.type
       }
     }

@@ -6,9 +6,9 @@ module "group_events_lambda" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "8.8.0"
 
-  count = local.group_events ? 1 : 0
+  count = local.enabled.group_events ? 1 : 0
 
-  function_name = var.events_lambda_function_name
+  function_name = var.group_events.lambda_function_name
   description   = "Group events for oxbow based on the table prefix"
   handler       = "provided"
   runtime       = "provided.al2023"
@@ -16,8 +16,8 @@ module "group_events_lambda" {
 
   create_package = false
   s3_existing_package = {
-    bucket = var.events_lambda_s3_bucket
-    key    = var.events_lambda_s3_key
+    bucket = var.group_events.lambda_s3_bucket
+    key    = var.group_events.lambda_s3_key
   }
 
   environment_variables = merge(
@@ -39,8 +39,8 @@ module "group_events_lambda" {
   event_source_mapping = {
     sqs = {
       event_source_arn                   = module.group_events_queue[0].queue_arn
-      batch_size                         = var.group_event_lambda_batch_size
-      maximum_batching_window_in_seconds = var.group_event_lambda_maximum_batching_window_in_seconds
+      batch_size                         = var.group_events.batch_size
+      maximum_batching_window_in_seconds = var.group_events.maximum_batching_window_in_seconds
     }
   }
   create_current_version_allowed_triggers = false
@@ -52,7 +52,7 @@ module "group_events_queue" {
   source  = "terraform-aws-modules/sqs/aws"
   version = "5.2.2"
 
-  count = local.group_events ? 1 : 0
+  count = local.enabled.group_events ? 1 : 0
 
   name                       = local.ingest_queue_name
   message_retention_seconds  = var.message_retention_seconds
@@ -64,10 +64,10 @@ module "group_events_queue" {
   queue_policy_statements = local.ingest_queue_policy_statements
 
   create_dlq                     = true
-  dlq_name                       = var.sqs_group_DL_queue_name
+  dlq_name                       = var.group_events.dl_queue_name
   dlq_delay_seconds              = 0
   dlq_visibility_timeout_seconds = 30
-  redrive_policy                 = { maxReceiveCount = 8 }
+  redrive_policy                 = { maxReceiveCount = var.group_events.max_receive_count }
 
   create_dlq_queue_policy     = true
   dlq_queue_policy_statements = local.same_account_only_statements
@@ -79,7 +79,7 @@ module "oxbow_fifo_queue" {
   source  = "terraform-aws-modules/sqs/aws"
   version = "5.2.2"
 
-  count = local.group_events ? 1 : 0
+  count = local.enabled.group_events ? 1 : 0
 
   name                        = local.fifo_queue_name
   fifo_queue                  = true
@@ -95,10 +95,10 @@ module "oxbow_fifo_queue" {
   queue_policy_statements = local.same_account_only_statements
 
   create_dlq                     = true
-  dlq_name                       = var.sqs_fifo_DL_queue_name
+  dlq_name                       = local.fifo_dlq_name
   dlq_delay_seconds              = 0
   dlq_visibility_timeout_seconds = 30
-  redrive_policy                 = { maxReceiveCount = 8 }
+  redrive_policy                 = { maxReceiveCount = var.group_events.max_receive_count }
 
   create_dlq_queue_policy     = true
   dlq_queue_policy_statements = local.same_account_only_statements

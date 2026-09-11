@@ -1,6 +1,3 @@
-# One test per policy defect found while auditing the rewrite. Each name says
-# what went wrong; each would fail if the defect were reintroduced.
-
 mock_provider "aws" {
   override_data {
     target = data.aws_caller_identity.current
@@ -15,6 +12,9 @@ mock_provider "aws" {
     values = { partition = "aws" }
   }
 
+  # aws_iam_role and aws_iam_policy validate their JSON and ARNs client-side, so
+  # the generated mock values have to parse. Policy content is therefore
+  # asserted against the structured inputs, not against rendered JSON.
   mock_data "aws_iam_policy_document" {
     defaults = {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
@@ -58,25 +58,149 @@ variables {
   sqs_queue_name_dl = "test-oxbow-queue-dl"
 }
 
-# Previously the policy was `from_sns ? sns_statement : s3_statement`, so a
-# deployment with both a topic and enable_bucket_notification admitted SNS only
-# and S3 deliveries were rejected with no visible error.
+################################################################################
+# Input validation
+################################################################################
+
+run "trailing_slash_on_s3_path_is_rejected" {
+  command = plan
+  variables {
+    s3_path = "catalogs/bronze_monolith/"
+  }
+  expect_failures = [var.s3_path]
+}
+
+run "bucket_arn_must_be_an_arn" {
+  command = plan
+  variables {
+    warehouse_bucket_arn = "scribdinc-data-lake-test"
+  }
+  expect_failures = [var.warehouse_bucket_arn]
+}
+
+run "unknown_architecture_is_rejected" {
+  command = plan
+  variables {
+    architectures = ["arm64", "x86_64"]
+  }
+  expect_failures = [var.architectures]
+}
+
+run "non_numeric_account_id_is_rejected" {
+  command = plan
+  variables {
+    warehouse_bucket_account_id = "not-an-account"
+  }
+  expect_failures = [var.warehouse_bucket_account_id]
+}
+
+run "invalid_filter_policy_scope_is_rejected" {
+  command = plan
+  variables {
+    glue_sync = {
+      lambda_s3_bucket     = "test-artifacts"
+      lambda_s3_key        = "glue-sync/glue-sync.zip"
+      lambda_function_name = "test-glue-sync"
+      sns_topic_arn        = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      sqs_queue_name       = "test-glue-sync-queue"
+      sqs_queue_name_dl    = "test-glue-sync-queue-dl"
+      iam_role_name        = "test-glue-sync-role"
+      iam_policy_name      = "test-glue-sync-policy"
+      filter_policy_scope  = ""
+    }
+  }
+  expect_failures = [var.glue_sync]
+}
+
+################################################################################
+# Name limits -- enforced by AWS at apply, not at plan
+################################################################################
+
+run "over_length_lambda_name_fails_at_plan" {
+  command = plan
+  variables {
+    lambda_function_name = "test-oxbow-with-a-name-that-is-far-too-long-to-be-a-lambda-function-name"
+  }
+  expect_failures = [terraform_data.name_length_guard]
+}
+
+run "over_length_derived_auto_tagging_name_fails_at_plan" {
+  command = plan
+  variables {
+    # 52 chars; the "-auto_tagging" suffix pushes the derived name past 64.
+    lambda_function_name = "test-oxbow-function-name-just-under-the-limit-abcdef"
+    auto_tagging = {
+      lambda_s3_bucket = "test-artifacts"
+      lambda_s3_key    = "auto-tagging/auto-tagging.zip"
+    }
+  }
+  expect_failures = [terraform_data.name_length_guard]
+}
+
+run "over_length_sqs_name_fails_at_plan" {
+  command = plan
+  variables {
+    sqs_queue_name = "test-oxbow-queue-with-a-name-that-runs-well-past-the-eighty-character-limit-for-sqs"
+  }
+  expect_failures = [terraform_data.name_length_guard]
+}
+
+run "over_length_athena_bucket_name_is_rejected" {
+  command = plan
+  variables {
+    glue_create = {
+      athena_workgroup_name = "test-glue-create"
+      athena_data_source    = "AwsDataCatalog"
+      athena_bucket_name    = "test-glue-create-athena-results-bucket-with-a-name-past-sixty-three"
+      lambda_s3_bucket      = "test-artifacts"
+      lambda_s3_key         = "glue-create/glue-create.zip"
+      lambda_function_name  = "test-glue-create"
+      sns_topic_arn         = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      sqs_queue_name        = "test-glue-create-queue"
+      sqs_queue_name_dl     = "test-glue-create-queue-dl"
+      iam_role_name         = "test-glue-create-role"
+      iam_policy_name       = "test-glue-create-policy"
+    }
+  }
+  expect_failures = [var.glue_create]
+}
+
+run "names_at_the_limit_are_accepted" {
+  command = plan
+  variables {
+    # Exactly 64 characters.
+    lambda_function_name = "test-oxbow-function-name-that-is-exactly-sixty-four-chars-long-a"
+  }
+
+  assert {
+    condition     = length(var.lambda_function_name) == 64
+    error_message = "This case is only meaningful at exactly the limit"
+  }
+
+  assert {
+    condition     = length(local.over_limit_names) == 0
+    error_message = "A name exactly at the limit must pass"
+  }
+}
+
+################################################################################
+# Policy defects found while auditing the rewrite
+################################################################################
+
+# The policy was `from_sns ? sns_statement : s3_statement`, so a deployment with
+# both a topic and a bucket notification admitted SNS only and S3 deliveries
+# were rejected with no visible error.
 run "both_delivery_paths_are_admitted_when_both_are_configured" {
   command = plan
 
   variables {
-    enable_bucket_notification = true
-    sns_topic_arn              = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+    bucket_notification = {}
+    sns_topic_arn       = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
   }
 
   assert {
-    condition     = contains(keys(local.ingest_queue_policy_statements), "s3_send")
-    error_message = "S3 notifies the queue directly here, so the policy must admit S3"
-  }
-
-  assert {
-    condition     = contains(keys(local.ingest_queue_policy_statements), "sns_send")
-    error_message = "The queue is also subscribed to the topic, so the policy must admit SNS"
+    condition     = toset(keys(local.ingest_queue_policy_statements)) == toset(["s3_send", "sns_send"])
+    error_message = "Both publishers are live here, so both must be admitted"
   }
 }
 
@@ -84,8 +208,7 @@ run "sns_only_deployment_does_not_admit_s3" {
   command = plan
 
   variables {
-    enable_bucket_notification = false
-    sns_topic_arn              = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+    sns_topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
   }
 
   assert {
@@ -126,25 +249,16 @@ run "warehouse_bucket_account_defaults_to_this_account" {
   }
 }
 
-run "non_numeric_account_id_is_rejected" {
-  command = plan
-
-  variables {
-    warehouse_bucket_account_id = "not-an-account"
-  }
-
-  expect_failures = [var.warehouse_bucket_account_id]
-}
-
 # Bucket names are global, so without source_account a same-named bucket in
 # another account could invoke the function.
 run "lambda_permissions_are_scoped_to_bucket_and_account" {
   command = plan
 
   variables {
-    enable_auto_tagging    = true
-    auto_tagging_s3_bucket = "test-artifacts"
-    auto_tagging_s3_key    = "auto-tagging/auto-tagging.zip"
+    auto_tagging = {
+      lambda_s3_bucket = "test-artifacts"
+      lambda_s3_key    = "auto-tagging/auto-tagging.zip"
+    }
   }
 
   assert {
@@ -205,104 +319,21 @@ run "dynamodb_grant_matches_the_documented_delta_rs_set" {
     condition     = !contains(local.expected_dynamodb_actions, "dynamodb:CreateTable")
     error_message = "Neither table is created by the lambda, so CreateTable must not be granted"
   }
+}
+
+run "no_identity_policy_action_uses_a_wildcard" {
+  command = plan
 
   assert {
     condition = alltrue([
-      for a in local.expected_dynamodb_actions : !endswith(a, ":*")
+      for a in concat(local.expected_dynamodb_actions, local.sqs_consumer_actions) :
+      !endswith(a, ":*")
     ])
-    error_message = "No wildcard DynamoDB actions"
-  }
-}
-
-# The stage configs default to all-empty strings, so enabling a stage without
-# filling one in used to fail partway through an apply with provider errors
-# naming neither the stage nor the field.
-run "enabling_glue_create_without_its_config_is_rejected" {
-  command = plan
-
-  variables {
-    enable_glue_create = true
+    error_message = "Identity-policy actions must be enumerated, never service:*"
   }
 
-  expect_failures = [var.glue_create_config]
-}
-
-run "enabling_glue_sync_without_its_config_is_rejected" {
-  command = plan
-
-  variables {
-    enable_glue_sync = true
+  assert {
+    condition     = !contains(local.sqs_consumer_actions, "sqs:SendMessage")
+    error_message = "A queue consumer has no business sending; the FIFO producer grant is separate"
   }
-
-  expect_failures = [var.glue_sync_config]
-}
-
-run "enabling_auto_tagging_without_a_package_is_rejected" {
-  command = plan
-
-  variables {
-    enable_auto_tagging = true
-  }
-
-  expect_failures = [var.auto_tagging_s3_key]
-}
-
-run "enabling_group_events_without_a_package_is_rejected" {
-  command = plan
-
-  variables {
-    enable_group_events     = true
-    events_lambda_s3_bucket = ""
-  }
-
-  expect_failures = [var.events_lambda_s3_key]
-}
-
-run "enabling_the_glue_catalog_table_without_its_config_is_rejected" {
-  command = plan
-
-  variables {
-    enable_aws_glue_catalog_table = true
-  }
-
-  expect_failures = [var.glue_location_uri]
-}
-
-# S3 validates bucket names at plan, but only after the name is built; an
-# over-long Athena results bucket is caught here instead.
-run "over_length_athena_bucket_name_is_rejected" {
-  command = plan
-
-  variables {
-    enable_glue_create = true
-    glue_create_config = {
-      athena_workgroup_name         = "test-glue-create"
-      athena_data_source            = "AwsDataCatalog"
-      athena_bucket_name            = "test-glue-create-athena-results-bucket-with-a-name-that-runs-past-sixty-three"
-      lambda_s3_key                 = "glue-create/glue-create.zip"
-      lambda_s3_bucket              = "test-artifacts"
-      lambda_function_name          = "test-glue-create"
-      path_regex                    = "^catalogs/"
-      sns_topic_arn                 = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
-      sqs_queue_name                = "test-glue-create-queue"
-      sqs_queue_name_dl             = "test-glue-create-queue-dl"
-      iam_role_name                 = "test-glue-create-role"
-      iam_policy_name               = "test-glue-create-policy"
-      sns_subcription_filter_policy = ""
-      filter_policy_scope           = ""
-    }
-  }
-
-  expect_failures = [var.glue_create_config]
-}
-
-run "non_numeric_monitor_threshold_is_rejected" {
-  command = plan
-
-  variables {
-    enabled_dead_letters_monitoring = true
-    dl_critical                     = "two"
-  }
-
-  expect_failures = [var.dl_critical]
 }

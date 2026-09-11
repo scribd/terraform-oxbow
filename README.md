@@ -14,30 +14,34 @@ first — it is a no-downtime upgrade, but it is not a no-op plan.
 ## Shape of the pipeline
 
 ```
-                     enable_group_events = false
+                     group_events = null
 S3 (or SNS) ──► oxbow queue ──► oxbow lambda ──► Delta table
                      │
                      └──► DLQ ──► Datadog monitor
 
-                     enable_group_events = true
+                     group_events = {...}
 S3 (or SNS) ──► group queue ──► group-events lambda ──► FIFO queue ──► oxbow lambda
                      │                                       │
                      └──► DLQ                                └──► DLQ
 ```
 
-Every stage below the core is independently switchable, and each one that has a
-queue gets a dead letter queue and, when `enabled_dead_letters_monitoring` is
-on, a Datadog monitor.
+Every stage below the core is gated by one variable: **null turns it off, a
+config object turns it on** and carries everything that stage needs. Required
+fields are required by the object type, so a stage cannot be half-configured.
 
-| Toggle | Creates |
-| --- | --- |
-| `enable_group_events` | group-events lambda, its standard queue, the FIFO queue oxbow then reads |
-| `enable_auto_tagging` | auto-tagging lambda, queue, own IAM role |
-| `enable_glue_create` | glue-create lambda, queue, Athena workgroup and results bucket |
-| `enable_glue_sync` | glue-sync lambda and queue |
-| `enable_aws_glue_catalog_table` | a Glue catalog table over the parquet location |
-| `enable_bucket_notification` | the warehouse bucket's notification configuration |
-| `enabled_dead_letters_monitoring` | one Datadog monitor per dead letter queue |
+| Variable | null | non-null creates |
+| --- | --- | --- |
+| `group_events` | oxbow reads its own queue | group-events lambda, its standard queue, the FIFO queue oxbow then reads |
+| `auto_tagging` | — | auto-tagging lambda, queue, own IAM role |
+| `glue_create` | — | glue-create lambda, queue, Athena workgroup and results bucket |
+| `glue_sync` | — | glue-sync lambda and queue |
+| `glue_catalog_table` | — | a Glue catalog table over the parquet location |
+| `bucket_notification` | bucket notifications owned elsewhere | the warehouse bucket's notification configuration |
+| `dead_letter_monitoring` | — | one Datadog monitor per dead letter queue |
+
+Each queue a stage creates gets a dead letter queue, and every dead letter queue
+gets a monitor when `dead_letter_monitoring` is set. The `enabled_stages` output
+reports which gates are open.
 
 ## Usage
 
@@ -65,26 +69,48 @@ module "oxbow" {
   sqs_queue_name    = "${var.env}-oxbow-queue"
   sqs_queue_name_dl = "${var.env}-oxbow-queue-dl"
 
-  enable_bucket_notification = true
+  # Take the bucket's notification configuration, with the default
+  # parquet-under-s3_path filter.
+  bucket_notification = {}
 
-  enabled_dead_letters_monitoring = true
-  dl_alert_recipients             = ["@slack-data-platform"]
-  dl_warning                      = 1
-  dl_critical                     = 2
-  tags_monitoring                 = ["env:${var.env}", "service:oxbow"]
+  dead_letter_monitoring = {
+    critical         = 2
+    warning          = 1
+    alert_recipients = ["@slack-data-platform"]
+    tags             = ["env:${var.env}", "service:oxbow"]
+  }
 
   tags = module.warehouse_labels.tags
 }
 ```
 
-`enable_bucket_notification` writes the bucket's *entire* notification
-configuration, and S3 allows only one per bucket. If anything else already owns
-that bucket's notifications, leave this off and add the queue over there — the
-queue ARN to point at is the `ingest_queue_arn` output.
+Turning on a stage means filling in its object:
+
+```hcl
+  group_events = {
+    lambda_function_name = "${var.env}-oxbow-group-events"
+    lambda_s3_bucket     = var.artifacts_bucket
+    lambda_s3_key        = "group-events/group-events.zip"
+    queue_name           = "${var.env}-oxbow-group-events"
+    dl_queue_name        = "${var.env}-oxbow-group-events-dl"
+    fifo_queue_name      = "${var.env}-oxbow-fifo"
+    fifo_dl_queue_name   = "${var.env}-oxbow-fifo-dl"
+  }
+
+  auto_tagging = {
+    lambda_s3_bucket = var.artifacts_bucket
+    lambda_s3_key    = "auto-tagging/auto-tagging.zip"
+  }
+```
+
+`bucket_notification` writes the bucket's *entire* notification configuration,
+and S3 allows only one per bucket. If anything else already owns that bucket's
+notifications, leave it null and add the queue over there — the queue ARN to
+point at is the `ingest_queue_arn` output.
 
 ## Event delivery
 
-Leave `sns_topic_arn` empty and S3 notifies the ingest queue directly. Set it
+Leave `sns_topic_arn` null and S3 notifies the ingest queue directly. Set it
 and the module subscribes the ingest queue to the topic instead, and sets
 `UNWRAP_SNS_ENVELOPE` on whichever lambda reads the envelope first — the
 group-events lambda when grouping is on, oxbow otherwise. The queue policy
@@ -115,8 +141,9 @@ tofu test
 ```
 
 Both providers are mocked, so the suite needs no AWS or Datadog credentials and
-runs on every push. It covers the toggle matrix, the event-delivery wiring, the
-derived names and their limits, and the input validations.
+runs on every push. It covers the feature gates, the event-delivery wiring, the
+derived names and their limits, the policy defects found while auditing the
+rewrite, and the input validations.
 
 ##
 Made with ❤️ by the Platform Infra Team.

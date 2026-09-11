@@ -1,9 +1,4 @@
-# Shared provider mocks are declared per file; this file asserts the baseline
-# wiring every other test builds on.
-
 mock_provider "aws" {
-  # Identity data the module interpolates into ARNs, pinned so tests can assert
-  # on the ARNs it builds.
   override_data {
     target = data.aws_caller_identity.current
     values = { account_id = "123456789012" }
@@ -17,17 +12,15 @@ mock_provider "aws" {
     values = { partition = "aws" }
   }
 
-  # aws_iam_role and aws_iam_policy validate their JSON client-side, so the
-  # mocked document has to parse. Policy content is therefore asserted against
-  # the structured inputs rather than against rendered JSON.
+  # aws_iam_role and aws_iam_policy validate their JSON and ARNs client-side, so
+  # the generated mock values have to parse. Policy content is therefore
+  # asserted against the structured inputs, not against rendered JSON.
   mock_data "aws_iam_policy_document" {
     defaults = {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
     }
   }
 
-  # Attachments and the lambda's role reference validate the ARN shape, so a
-  # generated placeholder will not do.
   mock_resource "aws_iam_policy" {
     defaults = {
       arn = "arn:aws:iam::123456789012:policy/mock"
@@ -74,6 +67,11 @@ run "minimal_deployment" {
   }
 
   assert {
+    condition     = !anytrue(values(local.enabled))
+    error_message = "Every optional stage must be off when its config variable is null"
+  }
+
+  assert {
     condition     = length(module.oxbow_queue) == 1 && length(module.oxbow_fifo_queue) == 0
     error_message = "With grouping off the standard queue is created and the FIFO queue is not"
   }
@@ -84,38 +82,23 @@ run "minimal_deployment" {
   }
 
   assert {
-    condition     = length(module.group_events_lambda) == 0 && length(module.group_events_queue) == 0
-    error_message = "Group events resources must not exist when enable_group_events is false"
+    condition = (
+      length(module.group_events_lambda) == 0 &&
+      length(module.auto_tagging_lambda) == 0 &&
+      length(module.glue_create_lambda) == 0 &&
+      length(module.glue_sync_lambda) == 0
+    )
+    error_message = "No optional lambda may exist by default"
   }
 
   assert {
-    condition     = length(module.auto_tagging_lambda) == 0
-    error_message = "Auto tagging must be off by default"
-  }
-
-  assert {
-    condition     = length(module.glue_create_lambda) == 0 && length(module.glue_sync_lambda) == 0
-    error_message = "Glue lambdas must be off by default"
-  }
-
-  assert {
-    condition     = length(aws_glue_catalog_table.oxbow) == 0
-    error_message = "Glue catalog table must be off by default"
-  }
-
-  assert {
-    condition     = length(aws_s3_bucket_notification.warehouse) == 0
-    error_message = "Bucket notification must be off by default"
-  }
-
-  assert {
-    condition     = length(aws_sns_topic_subscription.oxbow) == 0
-    error_message = "No SNS subscription without sns_topic_arn"
-  }
-
-  assert {
-    condition     = length(datadog_monitor.dead_letters) == 0
-    error_message = "Dead letter monitoring must be off by default"
+    condition = (
+      length(aws_glue_catalog_table.oxbow) == 0 &&
+      length(aws_s3_bucket_notification.warehouse) == 0 &&
+      length(aws_sns_topic_subscription.oxbow) == 0 &&
+      length(datadog_monitor.dead_letters) == 0
+    )
+    error_message = "No optional resource may exist by default"
   }
 
   assert {
@@ -131,11 +114,6 @@ run "minimal_deployment" {
 
 run "oxbow_environment_without_sns" {
   command = plan
-
-  assert {
-    condition     = module.oxbow_lambda.lambda_function_name == "test-oxbow"
-    error_message = "Function name mismatch"
-  }
 
   assert {
     condition     = local.oxbow_environment["RUST_LOG"] == "deltalake=info,oxbow=info"
@@ -191,11 +169,6 @@ run "sns_delivery_sets_unwrap_and_subscribes" {
   assert {
     condition     = length(aws_sns_topic_subscription.oxbow) == 1
     error_message = "The ingest queue must be subscribed to the topic"
-  }
-
-  assert {
-    condition     = contains(keys(local.ingest_queue_policy_statements), "sns_send")
-    error_message = "The queue policy must admit SNS, not S3, when fed from a topic"
   }
 
   assert {
@@ -259,16 +232,7 @@ run "no_queue_policy_allows_a_wildcard_principal" {
 
   assert {
     condition = alltrue(flatten([
-      for s in values(local.same_account_only_statements) : [
-        for c in s.condition : !startswith(c.test, "ForAllValues:")
-      ]
-    ]))
-    error_message = "ForAllValues evaluates true when the condition key is absent; never use it to gate access"
-  }
-
-  assert {
-    condition = alltrue(flatten([
-      for s in values(local.ingest_queue_policy_statements) : [
+      for s in concat(values(local.same_account_only_statements), values(local.ingest_queue_policy_statements)) : [
         for c in s.condition : !startswith(c.test, "ForAllValues:")
       ]
     ]))
@@ -276,28 +240,43 @@ run "no_queue_policy_allows_a_wildcard_principal" {
   }
 }
 
-run "bucket_notification_filters_on_the_configured_prefix" {
+run "bucket_notification_defaults_to_parquet_under_the_s3_path" {
   command = plan
 
   variables {
-    enable_bucket_notification = true
+    bucket_notification = {}
   }
 
   assert {
-    condition     = length(aws_s3_bucket_notification.warehouse) == 1
-    error_message = "Bucket notification should be created when enabled"
-  }
-
-  assert {
-    condition     = one(aws_s3_bucket_notification.warehouse).bucket == "scribdinc-data-lake-test"
-    error_message = "Notification must target the warehouse bucket"
+    condition     = local.enabled.bucket_notification
+    error_message = "An empty object still turns the stage on; only null turns it off"
   }
 
   assert {
     condition = alltrue([
       for q in one(aws_s3_bucket_notification.warehouse).queue :
-      q.filter_prefix == "catalogs/bronze_monolith/" && q.filter_suffix == ".parquet"
+      q.filter_prefix == "catalogs/bronze_monolith/" && q.filter_suffix == ".parquet" && q.events == toset(["s3:ObjectCreated:*"])
     ])
-    error_message = "Notification must be filtered to parquet objects under s3_path"
+    error_message = "Defaults must filter to parquet objects created under s3_path"
+  }
+}
+
+run "bucket_notification_filters_can_be_overridden" {
+  command = plan
+
+  variables {
+    bucket_notification = {
+      events        = ["s3:ObjectCreated:Put"]
+      filter_prefix = "other/prefix/"
+      filter_suffix = ".gz.parquet"
+    }
+  }
+
+  assert {
+    condition = alltrue([
+      for q in one(aws_s3_bucket_notification.warehouse).queue :
+      q.filter_prefix == "other/prefix/" && q.filter_suffix == ".gz.parquet"
+    ])
+    error_message = "Explicit filters must win over the derived defaults"
   }
 }

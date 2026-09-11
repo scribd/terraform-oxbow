@@ -12,6 +12,11 @@ variable "warehouse_bucket_arn" {
   }
 }
 
+variable "warehouse_bucket_name" {
+  type        = string
+  description = "Warehouse bucket name"
+}
+
 variable "warehouse_bucket_account_id" {
   type        = string
   description = "Account that owns the warehouse bucket; defaults to this account. S3 bucket ARNs carry no account id, so a cross-account bucket must name its owner or the SourceAccount conditions reject its events."
@@ -21,11 +26,6 @@ variable "warehouse_bucket_account_id" {
     condition     = var.warehouse_bucket_account_id == null || can(regex("^[0-9]{12}$", var.warehouse_bucket_account_id))
     error_message = "warehouse_bucket_account_id must be a 12-digit account id."
   }
-}
-
-variable "warehouse_bucket_name" {
-  type        = string
-  description = "Warehouse bucket name"
 }
 
 variable "s3_path" {
@@ -65,13 +65,13 @@ variable "lambda_s3_key" {
 
 variable "lambda_timeout" {
   type        = number
-  description = "Lambda timeout in seconds"
+  description = "Lambda timeout in seconds, applied to every lambda this module creates"
   default     = 120
 }
 
 variable "lambda_memory_size" {
   type        = number
-  description = "Lambda memory size in MB"
+  description = "Lambda memory size in MB, applied to every lambda this module creates"
   default     = 128
 }
 
@@ -162,7 +162,7 @@ variable "logstore_dynamodb_table_name" {
 
 variable "sqs_queue_name" {
   type        = string
-  description = "Oxbow ingest queue name, used when enable_group_events is false"
+  description = "Oxbow ingest queue name, used when the group_events stage is off"
 }
 
 variable "sqs_queue_name_dl" {
@@ -201,342 +201,161 @@ variable "sqs_managed_sse_enabled" {
 }
 
 ################################################################################
-# Group events
-################################################################################
-
-variable "enable_group_events" {
-  type        = bool
-  description = "Route events through the group-events lambda and a FIFO queue"
-  default     = false
-}
-
-variable "events_lambda_function_name" {
-  type        = string
-  description = "Group-events lambda function name"
-  default     = "events_lambda"
-}
-
-variable "events_lambda_s3_bucket" {
-  type        = string
-  description = "S3 bucket holding the group-events lambda package"
-  default     = "events_lambda"
-}
-
-variable "events_lambda_s3_key" {
-  type        = string
-  description = "S3 key of the group-events lambda package"
-  default     = "events_lambda"
-
-  validation {
-    condition     = !var.enable_group_events || (var.events_lambda_s3_bucket != "" && var.events_lambda_s3_key != "" && var.events_lambda_function_name != "")
-    error_message = "enable_group_events requires events_lambda_s3_bucket, events_lambda_s3_key and events_lambda_function_name."
-  }
-}
-
-variable "group_event_lambda_batch_size" {
-  type        = number
-  description = "Event source mapping batch size for the group-events lambda"
-  default     = 10
-}
-
-variable "group_event_lambda_maximum_batching_window_in_seconds" {
-  type        = number
-  description = "Event source mapping batching window for the group-events lambda"
-  default     = 1
-}
-
-variable "sqs_fifo_queue_name" {
-  type        = string
-  description = "FIFO queue name oxbow consumes when grouping is enabled; \".fifo\" is appended if absent"
-  default     = "this.fifo"
-}
-
-variable "sqs_fifo_DL_queue_name" {
-  type        = string
-  description = "FIFO dead letter queue name; \".fifo\" is appended if absent"
-  default     = "this.fifoDL"
-}
-
-variable "sqs_group_queue_name" {
-  type        = string
-  description = "Standard queue name the group-events lambda consumes"
-  default     = "this.group"
-}
-
-variable "sqs_group_DL_queue_name" {
-  type        = string
-  description = "Dead letter queue name for the group-events queue"
-  default     = "this.group"
-}
-
-################################################################################
-# Auto tagging
-################################################################################
-
-variable "enable_auto_tagging" {
-  type        = bool
-  description = "Create the auto-tagging lambda and its queue"
-  default     = false
-}
-
-variable "auto_tagging_s3_bucket" {
-  type        = string
-  description = "S3 bucket holding the auto-tagging lambda package"
-  default     = ""
-}
-
-variable "auto_tagging_s3_key" {
-  type        = string
-  description = "S3 key of the auto-tagging lambda package"
-  default     = ""
-
-  validation {
-    condition     = !var.enable_auto_tagging || (var.auto_tagging_s3_bucket != "" && var.auto_tagging_s3_key != "")
-    error_message = "enable_auto_tagging requires auto_tagging_s3_bucket and auto_tagging_s3_key."
-  }
-}
-
-################################################################################
-# Glue catalog table
-################################################################################
-
-variable "enable_aws_glue_catalog_table" {
-  type        = bool
-  description = "Create a Glue catalog table for the parquet location"
-  default     = false
-}
-
-variable "glue_database_name" {
-  type        = string
-  description = "Glue database holding the service table"
-  default     = ""
-}
-
-variable "glue_table_name" {
-  type        = string
-  description = "Glue service table name"
-  default     = ""
-}
-
-variable "glue_table_description" {
-  type        = string
-  description = "Glue table description"
-  default     = ""
-}
-
-variable "glue_location_uri" {
-  type        = string
-  description = "S3 path backing the Glue service table"
-  default     = ""
-
-  validation {
-    condition     = !var.enable_aws_glue_catalog_table || (var.glue_database_name != "" && var.glue_table_name != "" && var.glue_location_uri != "")
-    error_message = "enable_aws_glue_catalog_table requires glue_database_name, glue_table_name and glue_location_uri."
-  }
-}
-
-variable "parquet_schema" {
-  type = list(object({
-    name       = string
-    type       = string
-    parameters = optional(map(string))
-  }))
-  description = "Columns of the Glue service table"
-  default     = []
-}
-
-################################################################################
-# Glue create / glue sync lambdas
-################################################################################
-
-variable "enable_glue_create" {
-  type        = bool
-  description = "Create the glue-create lambda, its queue and its Athena workgroup"
-  default     = false
-}
-
-variable "glue_create_config" {
-  type = object({
-    athena_workgroup_name         = string
-    athena_data_source            = string
-    athena_bucket_name            = string
-    lambda_s3_key                 = string
-    lambda_s3_bucket              = string
-    lambda_function_name          = string
-    path_regex                    = string
-    sns_topic_arn                 = string
-    sqs_queue_name                = string
-    sqs_queue_name_dl             = string
-    iam_role_name                 = string
-    iam_policy_name               = string
-    sns_subcription_filter_policy = string
-    filter_policy_scope           = string
-  })
-  description = "Configuration of the glue-create lambda; required when enable_glue_create is true"
-  default = {
-    athena_workgroup_name         = ""
-    athena_data_source            = ""
-    athena_bucket_name            = ""
-    lambda_s3_key                 = ""
-    lambda_s3_bucket              = ""
-    lambda_function_name          = ""
-    path_regex                    = ""
-    sns_topic_arn                 = ""
-    sqs_queue_name                = ""
-    sqs_queue_name_dl             = ""
-    iam_role_name                 = ""
-    iam_policy_name               = ""
-    sns_subcription_filter_policy = ""
-    filter_policy_scope           = ""
-  }
-
-  validation {
-    condition = !var.enable_glue_create || alltrue([
-      for f in [
-        var.glue_create_config.athena_workgroup_name,
-        var.glue_create_config.athena_bucket_name,
-        var.glue_create_config.lambda_s3_bucket,
-        var.glue_create_config.lambda_s3_key,
-        var.glue_create_config.lambda_function_name,
-        var.glue_create_config.sns_topic_arn,
-        var.glue_create_config.sqs_queue_name,
-        var.glue_create_config.sqs_queue_name_dl,
-        var.glue_create_config.iam_role_name,
-        var.glue_create_config.iam_policy_name,
-      ] : f != ""
-    ])
-    error_message = "enable_glue_create requires every glue_create_config field except path_regex, athena_data_source and the two SNS filter fields."
-  }
-
-  validation {
-    condition     = !var.enable_glue_create || length(var.glue_create_config.athena_bucket_name) <= 63
-    error_message = "glue_create_config.athena_bucket_name exceeds the 63-character S3 bucket limit."
-  }
-}
-
-variable "enable_glue_sync" {
-  type        = bool
-  description = "Create the glue-sync lambda and its queue"
-  default     = false
-}
-
-variable "glue_sync_config" {
-  type = object({
-    lambda_s3_key                 = string
-    lambda_s3_bucket              = string
-    lambda_function_name          = string
-    path_regex                    = string
-    sns_topic_arn                 = string
-    sqs_queue_name                = string
-    sqs_queue_name_dl             = string
-    iam_role_name                 = string
-    iam_policy_name               = string
-    sns_subcription_filter_policy = string
-    filter_policy_scope           = string
-  })
-  description = "Configuration of the glue-sync lambda; required when enable_glue_sync is true"
-  default = {
-    lambda_s3_key                 = ""
-    lambda_s3_bucket              = ""
-    lambda_function_name          = ""
-    path_regex                    = ""
-    sns_topic_arn                 = ""
-    sqs_queue_name                = ""
-    sqs_queue_name_dl             = ""
-    iam_role_name                 = ""
-    iam_policy_name               = ""
-    sns_subcription_filter_policy = ""
-    filter_policy_scope           = ""
-  }
-
-  validation {
-    condition = !var.enable_glue_sync || alltrue([
-      for f in [
-        var.glue_sync_config.lambda_s3_bucket,
-        var.glue_sync_config.lambda_s3_key,
-        var.glue_sync_config.lambda_function_name,
-        var.glue_sync_config.sns_topic_arn,
-        var.glue_sync_config.sqs_queue_name,
-        var.glue_sync_config.sqs_queue_name_dl,
-        var.glue_sync_config.iam_role_name,
-        var.glue_sync_config.iam_policy_name,
-      ] : f != ""
-    ])
-    error_message = "enable_glue_sync requires every glue_sync_config field except path_regex and the two SNS filter fields."
-  }
-}
-
-################################################################################
 # Event delivery
 ################################################################################
-
-variable "enable_bucket_notification" {
-  type        = bool
-  description = "Let this module own the warehouse bucket's notification configuration"
-  default     = false
-}
 
 variable "sns_topic_arn" {
   type        = string
   description = "Subscribe the ingest queues to this topic instead of taking S3 events directly"
-  default     = ""
-}
-
-################################################################################
-# Monitoring
-################################################################################
-
-variable "enabled_dead_letters_monitoring" {
-  type        = bool
-  description = "Create a Datadog monitor per dead letter queue"
-  default     = false
-}
-
-variable "dl_alert_recipients" {
-  type        = list(string)
-  description = "Datadog notification handles for the dead letter monitors"
-  default     = []
-}
-
-variable "dl_alert_message" {
-  type        = string
-  description = "Extra text appended to the dead letter monitor message"
-  default     = ""
-}
-
-variable "dl_warning" {
-  type        = string
-  description = "Dead letter monitor warning threshold"
-  default     = null
-}
-
-variable "dl_critical" {
-  type        = string
-  description = "Dead letter monitor critical threshold"
   default     = null
 
   validation {
-    condition     = var.dl_critical == null || can(tonumber(var.dl_critical))
-    error_message = "dl_critical is interpolated into the monitor query and must be numeric."
+    condition     = var.sns_topic_arn == null || startswith(coalesce(var.sns_topic_arn, "arn:"), "arn:")
+    error_message = "sns_topic_arn must be a topic ARN, or null to take S3 events directly."
   }
 }
 
-variable "dl_ok" {
-  type        = string
-  description = "Dead letter monitor recovery threshold"
+################################################################################
+# Optional stages
+#
+# Every variable below gates one feature: null turns the stage off, a non-null
+# object turns it on and carries everything that stage needs. Required fields
+# are required by the type, so an enabled stage cannot be half-configured.
+################################################################################
+
+variable "bucket_notification" {
+  type = object({
+    events        = optional(list(string), ["s3:ObjectCreated:*"])
+    filter_prefix = optional(string)
+    filter_suffix = optional(string, ".parquet")
+  })
+  description = <<-EOT
+    Let this module own the warehouse bucket's notification configuration.
+    S3 permits one configuration per bucket, so leave this null when anything
+    else owns it and point that at the ingest_queue_arn output instead.
+    filter_prefix defaults to "<s3_path>/".
+  EOT
   default     = null
 }
 
-variable "tags_monitoring" {
-  type        = list(string)
-  description = "Tags applied to the Datadog monitors"
-  default     = []
+variable "group_events" {
+  type = object({
+    lambda_function_name               = string
+    lambda_s3_bucket                   = string
+    lambda_s3_key                      = string
+    queue_name                         = string
+    dl_queue_name                      = string
+    fifo_queue_name                    = string
+    fifo_dl_queue_name                 = string
+    batch_size                         = optional(number, 10)
+    maximum_batching_window_in_seconds = optional(number, 1)
+    max_receive_count                  = optional(number, 8)
+  })
+  description = <<-EOT
+    Batch events by table prefix before oxbow sees them. S3 events land on
+    queue_name, this lambda groups them onto the FIFO queue, and oxbow consumes
+    that instead of the standard queue. ".fifo" is appended to the FIFO names if
+    absent. Shares the oxbow lambda's IAM role.
+  EOT
+  default     = null
 }
 
-variable "monitoring_query_conditions" {
-  type        = string
-  description = "Extra comma-separated key:value scope terms for the monitor query"
-  default     = ""
+variable "auto_tagging" {
+  type = object({
+    lambda_s3_bucket = string
+    lambda_s3_key    = string
+  })
+  description = <<-EOT
+    Tag objects as they land, on its own queue, lambda and IAM role. Names are
+    derived from the oxbow names with an "-auto_tagging" suffix. This module
+    does not route events to its queue: set sns_topic_arn, or wire the bucket to
+    the autotag_sqs_arn output.
+  EOT
+  default     = null
+}
+
+variable "glue_catalog_table" {
+  type = object({
+    database_name = string
+    table_name    = string
+    location_uri  = string
+    description   = optional(string, "")
+    columns = optional(list(object({
+      name       = string
+      type       = string
+      parameters = optional(map(string))
+    })), [])
+  })
+  description = "Create a parquet-backed Glue catalog table over location_uri"
+  default     = null
+}
+
+variable "glue_create" {
+  type = object({
+    athena_workgroup_name          = string
+    athena_data_source             = string
+    athena_bucket_name             = string
+    lambda_s3_bucket               = string
+    lambda_s3_key                  = string
+    lambda_function_name           = string
+    sns_topic_arn                  = string
+    sqs_queue_name                 = string
+    sqs_queue_name_dl              = string
+    iam_role_name                  = string
+    iam_policy_name                = string
+    path_regex                     = optional(string, "")
+    sns_subscription_filter_policy = optional(string)
+    filter_policy_scope            = optional(string)
+  })
+  description = "Create Glue catalog tables from the S3 path, running DDL through a dedicated Athena workgroup"
+  default     = null
+
+  validation {
+    condition     = var.glue_create == null || length(var.glue_create.athena_bucket_name) <= 63
+    error_message = "glue_create.athena_bucket_name exceeds the 63-character S3 bucket limit."
+  }
+
+  validation {
+    condition     = var.glue_create == null || var.glue_create.filter_policy_scope == null || contains(["MessageAttributes", "MessageBody"], coalesce(var.glue_create.filter_policy_scope, "x"))
+    error_message = "glue_create.filter_policy_scope must be MessageAttributes, MessageBody, or null."
+  }
+}
+
+variable "glue_sync" {
+  type = object({
+    lambda_s3_bucket               = string
+    lambda_s3_key                  = string
+    lambda_function_name           = string
+    sns_topic_arn                  = string
+    sqs_queue_name                 = string
+    sqs_queue_name_dl              = string
+    iam_role_name                  = string
+    iam_policy_name                = string
+    path_regex                     = optional(string, "")
+    sns_subscription_filter_policy = optional(string)
+    filter_policy_scope            = optional(string)
+  })
+  description = "Keep existing Glue catalog tables in step with the Delta tables oxbow writes"
+  default     = null
+
+  validation {
+    condition     = var.glue_sync == null || var.glue_sync.filter_policy_scope == null || contains(["MessageAttributes", "MessageBody"], coalesce(var.glue_sync.filter_policy_scope, "x"))
+    error_message = "glue_sync.filter_policy_scope must be MessageAttributes, MessageBody, or null."
+  }
+}
+
+variable "dead_letter_monitoring" {
+  type = object({
+    critical         = number
+    warning          = optional(number)
+    ok               = optional(number)
+    alert_recipients = optional(list(string), [])
+    alert_message    = optional(string, "")
+    tags             = optional(list(string), [])
+    query_conditions = optional(string, "")
+  })
+  description = "One Datadog monitor per dead letter queue this module creates. query_conditions is extra comma-separated key:value scope terms for the monitor query."
+  default     = null
 }
 
 ################################################################################

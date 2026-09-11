@@ -5,9 +5,9 @@ module "glue_create_athena_workgroup_bucket" {
   source  = "terraform-aws-modules/s3-bucket/aws"
   version = "5.15.4"
 
-  count = var.enable_glue_create ? 1 : 0
+  count = local.enabled.glue_create ? 1 : 0
 
-  bucket                   = var.glue_create_config.athena_bucket_name
+  bucket                   = var.glue_create.athena_bucket_name
   block_public_acls        = true
   block_public_policy      = true
   ignore_public_acls       = true
@@ -20,9 +20,9 @@ module "glue_create_athena_workgroup_bucket" {
 }
 
 resource "aws_athena_workgroup" "glue_create" {
-  count = var.enable_glue_create ? 1 : 0
+  count = local.enabled.glue_create ? 1 : 0
 
-  name = var.glue_create_config.athena_workgroup_name
+  name = var.glue_create.athena_workgroup_name
   tags = var.tags
 
   configuration {
@@ -39,9 +39,9 @@ module "glue_create_lambda" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "8.8.0"
 
-  count = var.enable_glue_create ? 1 : 0
+  count = local.enabled.glue_create ? 1 : 0
 
-  function_name = var.glue_create_config.lambda_function_name
+  function_name = var.glue_create.lambda_function_name
   description   = "Create tables in the AWS Glue catalog based on the table prefix"
   handler       = "provided"
   runtime       = "provided.al2023"
@@ -49,8 +49,8 @@ module "glue_create_lambda" {
 
   create_package = false
   s3_existing_package = {
-    bucket = var.glue_create_config.lambda_s3_bucket
-    key    = var.glue_create_config.lambda_s3_key
+    bucket = var.glue_create.lambda_s3_bucket
+    key    = var.glue_create.lambda_s3_key
   }
 
   memory_size = var.lambda_memory_size
@@ -58,13 +58,13 @@ module "glue_create_lambda" {
 
   environment_variables = {
     RUST_LOG            = var.rust_log_oxbow_debug_level
-    ATHENA_WORKGROUP    = var.glue_create_config.athena_workgroup_name
-    ATHENA_DATA_SOURCE  = var.glue_create_config.athena_data_source
-    GLUE_PATH_REGEX     = var.glue_create_config.path_regex
+    ATHENA_WORKGROUP    = var.glue_create.athena_workgroup_name
+    ATHENA_DATA_SOURCE  = var.glue_create.athena_data_source
+    GLUE_PATH_REGEX     = var.glue_create.path_regex
     UNWRAP_SNS_ENVELOPE = true
   }
 
-  role_name     = var.glue_create_config.iam_role_name
+  role_name     = var.glue_create.iam_role_name
   attach_policy = true
   policy        = aws_iam_policy.glue_create[0].arn
 
@@ -85,9 +85,9 @@ module "glue_create_queue" {
   source  = "terraform-aws-modules/sqs/aws"
   version = "5.2.2"
 
-  count = var.enable_glue_create ? 1 : 0
+  count = local.enabled.glue_create ? 1 : 0
 
-  name                       = var.glue_create_config.sqs_queue_name
+  name                       = var.glue_create.sqs_queue_name
   message_retention_seconds  = var.message_retention_seconds
   visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
   delay_seconds              = var.sqs_delay_seconds
@@ -102,13 +102,13 @@ module "glue_create_queue" {
       condition = [{
         test     = "ArnEquals"
         variable = "aws:SourceArn"
-        values   = [var.glue_create_config.sns_topic_arn]
+        values   = [var.glue_create.sns_topic_arn]
       }]
     }
   }
 
   create_dlq                     = true
-  dlq_name                       = var.glue_create_config.sqs_queue_name_dl
+  dlq_name                       = var.glue_create.sqs_queue_name_dl
   dlq_delay_seconds              = 0
   dlq_visibility_timeout_seconds = 30
   redrive_policy                 = { maxReceiveCount = var.sqs_redrive_policy_maxReceiveCount }
@@ -120,27 +120,26 @@ module "glue_create_queue" {
 }
 
 resource "aws_sns_topic_subscription" "glue_create" {
-  count = var.enable_glue_create ? 1 : 0
+  count = local.enabled.glue_create ? 1 : 0
 
-  # Empty strings are rejected by the provider; absent means "no filter".
-  filter_policy       = var.glue_create_config.sns_subcription_filter_policy != "" ? var.glue_create_config.sns_subcription_filter_policy : null
-  filter_policy_scope = var.glue_create_config.filter_policy_scope != "" ? var.glue_create_config.filter_policy_scope : null
-  topic_arn           = var.glue_create_config.sns_topic_arn
+  filter_policy       = var.glue_create.sns_subscription_filter_policy
+  filter_policy_scope = var.glue_create.filter_policy_scope
+  topic_arn           = var.glue_create.sns_topic_arn
   protocol            = "sqs"
   endpoint            = module.glue_create_queue[0].queue_arn
 }
 
 resource "aws_iam_policy" "glue_create" {
-  count = var.enable_glue_create ? 1 : 0
+  count = local.enabled.glue_create ? 1 : 0
 
-  name        = var.glue_create_config.iam_policy_name
+  name        = var.glue_create.iam_policy_name
   description = "Glue create policy allows access to Athena, Glue and the warehouse prefix"
   policy      = data.aws_iam_policy_document.glue_create[0].json
   tags        = var.tags
 }
 
 data "aws_iam_policy_document" "glue_create" {
-  count = var.enable_glue_create ? 1 : 0
+  count = local.enabled.glue_create ? 1 : 0
 
   statement {
     sid    = "AthenaWorkgroupAthenaRW"
@@ -214,23 +213,9 @@ data "aws_iam_policy_document" "glue_create" {
   }
 
   statement {
-    sid    = "ConsumeQueue"
-    effect = "Allow"
-    actions = [
-      "sqs:ReceiveMessage",
-      "sqs:DeleteMessage",
-      "sqs:GetQueueAttributes",
-      "sqs:GetQueueUrl",
-      "sqs:ChangeMessageVisibility",
-    ]
+    sid       = "ConsumeQueue"
+    effect    = "Allow"
+    actions   = local.sqs_consumer_actions
     resources = [module.glue_create_queue[0].queue_arn]
   }
-}
-
-locals {
-  glue_catalog_resources = [
-    "arn:${local.partition}:glue:${local.region}:${local.account_id}:catalog",
-    "arn:${local.partition}:glue:${local.region}:${local.account_id}:database/*",
-    "arn:${local.partition}:glue:${local.region}:${local.account_id}:table/*",
-  ]
 }

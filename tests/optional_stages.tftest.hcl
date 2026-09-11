@@ -1,6 +1,4 @@
 mock_provider "aws" {
-  # Identity data the module interpolates into ARNs, pinned so tests can assert
-  # on the ARNs it builds.
   override_data {
     target = data.aws_caller_identity.current
     values = { account_id = "123456789012" }
@@ -14,17 +12,15 @@ mock_provider "aws" {
     values = { partition = "aws" }
   }
 
-  # aws_iam_role and aws_iam_policy validate their JSON client-side, so the
-  # mocked document has to parse. Policy content is therefore asserted against
-  # the structured inputs rather than against rendered JSON.
+  # aws_iam_role and aws_iam_policy validate their JSON and ARNs client-side, so
+  # the generated mock values have to parse. Policy content is therefore
+  # asserted against the structured inputs, not against rendered JSON.
   mock_data "aws_iam_policy_document" {
     defaults = {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
     }
   }
 
-  # Attachments and the lambda's role reference validate the ARN shape, so a
-  # generated placeholder will not do.
   mock_resource "aws_iam_policy" {
     defaults = {
       arn = "arn:aws:iam::123456789012:policy/mock"
@@ -66,9 +62,15 @@ run "auto_tagging_derives_its_names_from_the_oxbow_names" {
   command = plan
 
   variables {
-    enable_auto_tagging    = true
-    auto_tagging_s3_bucket = "test-artifacts"
-    auto_tagging_s3_key    = "auto-tagging/auto-tagging.zip"
+    auto_tagging = {
+      lambda_s3_bucket = "test-artifacts"
+      lambda_s3_key    = "auto-tagging/auto-tagging.zip"
+    }
+  }
+
+  assert {
+    condition     = local.enabled.auto_tagging && !local.enabled.glue_create && !local.enabled.glue_sync
+    error_message = "Turning on one stage must not turn on any other"
   }
 
   assert {
@@ -101,22 +103,19 @@ run "glue_create_wires_athena_workgroup_queue_and_subscription" {
   command = plan
 
   variables {
-    enable_glue_create = true
-    glue_create_config = {
-      athena_workgroup_name         = "test-glue-create"
-      athena_data_source            = "AwsDataCatalog"
-      athena_bucket_name            = "test-glue-create-athena"
-      lambda_s3_key                 = "glue-create/glue-create.zip"
-      lambda_s3_bucket              = "test-artifacts"
-      lambda_function_name          = "test-glue-create"
-      path_regex                    = "^catalogs/(?<database>[^/]+)/(?<table>[^/]+)"
-      sns_topic_arn                 = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
-      sqs_queue_name                = "test-glue-create-queue"
-      sqs_queue_name_dl             = "test-glue-create-queue-dl"
-      iam_role_name                 = "test-glue-create-role"
-      iam_policy_name               = "test-glue-create-policy"
-      sns_subcription_filter_policy = ""
-      filter_policy_scope           = ""
+    glue_create = {
+      athena_workgroup_name = "test-glue-create"
+      athena_data_source    = "AwsDataCatalog"
+      athena_bucket_name    = "test-glue-create-athena"
+      lambda_s3_bucket      = "test-artifacts"
+      lambda_s3_key         = "glue-create/glue-create.zip"
+      lambda_function_name  = "test-glue-create"
+      path_regex            = "^catalogs/(?<database>[^/]+)/(?<table>[^/]+)"
+      sns_topic_arn         = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      sqs_queue_name        = "test-glue-create-queue"
+      sqs_queue_name_dl     = "test-glue-create-queue-dl"
+      iam_role_name         = "test-glue-create-role"
+      iam_policy_name       = "test-glue-create-policy"
     }
   }
 
@@ -135,6 +134,16 @@ run "glue_create_wires_athena_workgroup_queue_and_subscription" {
     error_message = "glue-create subscribes its queue to its configured topic"
   }
 
+  # Leaving the SNS filter fields unset must reach the provider as null. The
+  # rejected value -- "" -- is covered by invalid_filter_policy_scope_is_rejected
+  # in policies.tftest.hcl; it cannot be asserted here, because the attribute is
+  # computed (so mocked) and `var.*` inside a run block reads the test's raw
+  # value rather than the type-converted one, skipping optional() defaults.
+  assert {
+    condition     = length(aws_sns_topic_subscription.glue_create) == 1
+    error_message = "An unset filter scope must still produce a valid subscription"
+  }
+
   assert {
     condition     = length(module.glue_sync_lambda) == 0
     error_message = "Enabling glue-create must not drag in glue-sync"
@@ -145,19 +154,15 @@ run "glue_sync_is_independent_of_glue_create" {
   command = plan
 
   variables {
-    enable_glue_sync = true
-    glue_sync_config = {
-      lambda_s3_key                 = "glue-sync/glue-sync.zip"
-      lambda_s3_bucket              = "test-artifacts"
-      lambda_function_name          = "test-glue-sync"
-      path_regex                    = "^catalogs/(?<database>[^/]+)/(?<table>[^/]+)"
-      sns_topic_arn                 = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
-      sqs_queue_name                = "test-glue-sync-queue"
-      sqs_queue_name_dl             = "test-glue-sync-queue-dl"
-      iam_role_name                 = "test-glue-sync-role"
-      iam_policy_name               = "test-glue-sync-policy"
-      sns_subcription_filter_policy = ""
-      filter_policy_scope           = ""
+    glue_sync = {
+      lambda_s3_bucket     = "test-artifacts"
+      lambda_s3_key        = "glue-sync/glue-sync.zip"
+      lambda_function_name = "test-glue-sync"
+      sns_topic_arn        = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      sqs_queue_name       = "test-glue-sync-queue"
+      sqs_queue_name_dl    = "test-glue-sync-queue-dl"
+      iam_role_name        = "test-glue-sync-role"
+      iam_policy_name      = "test-glue-sync-policy"
     }
   }
 
@@ -176,14 +181,15 @@ run "glue_catalog_table_is_parquet_backed" {
   command = plan
 
   variables {
-    enable_aws_glue_catalog_table = true
-    glue_database_name            = "bronze_monolith"
-    glue_table_name               = "test_table"
-    glue_location_uri             = "s3://scribdinc-data-lake-test/catalogs/bronze_monolith/test_table"
-    parquet_schema = [
-      { name = "id", type = "bigint" },
-      { name = "created_at", type = "timestamp" },
-    ]
+    glue_catalog_table = {
+      database_name = "bronze_monolith"
+      table_name    = "test_table"
+      location_uri  = "s3://scribdinc-data-lake-test/catalogs/bronze_monolith/test_table"
+      columns = [
+        { name = "id", type = "bigint" },
+        { name = "created_at", type = "timestamp" },
+      ]
+    }
   }
 
   assert {
@@ -193,7 +199,24 @@ run "glue_catalog_table_is_parquet_backed" {
 
   assert {
     condition     = length(one(one(aws_glue_catalog_table.oxbow).storage_descriptor).columns) == 2
-    error_message = "Every column in parquet_schema must reach the storage descriptor"
+    error_message = "Every column must reach the storage descriptor"
+  }
+}
+
+run "glue_catalog_table_columns_default_to_empty" {
+  command = plan
+
+  variables {
+    glue_catalog_table = {
+      database_name = "bronze_monolith"
+      table_name    = "test_table"
+      location_uri  = "s3://scribdinc-data-lake-test/catalogs/bronze_monolith/test_table"
+    }
+  }
+
+  assert {
+    condition     = length(one(one(aws_glue_catalog_table.oxbow).storage_descriptor).columns) == 0
+    error_message = "A table with no declared columns is valid; oxbow writes the schema"
   }
 }
 
@@ -201,29 +224,27 @@ run "every_dead_letter_queue_gets_a_monitor" {
   command = plan
 
   variables {
-    enable_auto_tagging    = true
-    auto_tagging_s3_bucket = "test-artifacts"
-    auto_tagging_s3_key    = "auto-tagging/auto-tagging.zip"
-
-    enable_glue_sync = true
-    glue_sync_config = {
-      lambda_s3_key                 = "glue-sync/glue-sync.zip"
-      lambda_s3_bucket              = "test-artifacts"
-      lambda_function_name          = "test-glue-sync"
-      path_regex                    = "^catalogs/"
-      sns_topic_arn                 = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
-      sqs_queue_name                = "test-glue-sync-queue"
-      sqs_queue_name_dl             = "test-glue-sync-queue-dl"
-      iam_role_name                 = "test-glue-sync-role"
-      iam_policy_name               = "test-glue-sync-policy"
-      sns_subcription_filter_policy = ""
-      filter_policy_scope           = ""
+    auto_tagging = {
+      lambda_s3_bucket = "test-artifacts"
+      lambda_s3_key    = "auto-tagging/auto-tagging.zip"
     }
 
-    enabled_dead_letters_monitoring = true
-    dl_critical                     = "2"
-    dl_warning                      = "1"
-    monitoring_query_conditions     = "env:test"
+    glue_sync = {
+      lambda_s3_bucket     = "test-artifacts"
+      lambda_s3_key        = "glue-sync/glue-sync.zip"
+      lambda_function_name = "test-glue-sync"
+      sns_topic_arn        = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      sqs_queue_name       = "test-glue-sync-queue"
+      sqs_queue_name_dl    = "test-glue-sync-queue-dl"
+      iam_role_name        = "test-glue-sync-role"
+      iam_policy_name      = "test-glue-sync-policy"
+    }
+
+    dead_letter_monitoring = {
+      critical         = 2
+      warning          = 1
+      query_conditions = "env:test"
+    }
   }
 
   assert {
@@ -245,6 +266,29 @@ run "every_dead_letter_queue_gets_a_monitor" {
       for m in values(datadog_monitor.dead_letters) :
       strcontains(m.query, ", env:test}")
     ])
-    error_message = "monitoring_query_conditions must be appended to the monitor scope"
+    error_message = "query_conditions must be appended to the monitor scope"
+  }
+}
+
+run "monitor_query_conditions_are_omitted_when_unset" {
+  command = plan
+
+  variables {
+    dead_letter_monitoring = {
+      critical = 2
+    }
+  }
+
+  assert {
+    condition     = local.monitor_query_conditions == ""
+    error_message = "An unset query_conditions must not leave a dangling comma in the query"
+  }
+
+  assert {
+    condition = alltrue([
+      for m in values(datadog_monitor.dead_letters) :
+      strcontains(m.query, "{queuename:test-oxbow-queue-dl}")
+    ])
+    error_message = "The monitor scope must close cleanly on the queue name alone"
   }
 }

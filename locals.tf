@@ -7,8 +7,19 @@ locals {
   region     = data.aws_region.current.region
   partition  = data.aws_partition.current.partition
 
-  group_events = var.enable_group_events
-  from_sns     = var.sns_topic_arn != ""
+  # One gate per optional stage. Each stage's config variable is null when the
+  # stage is off, so every count and conditional in the module keys off this.
+  enabled = {
+    bucket_notification = var.bucket_notification != null
+    group_events        = var.group_events != null
+    auto_tagging        = var.auto_tagging != null
+    glue_catalog_table  = var.glue_catalog_table != null
+    glue_create         = var.glue_create != null
+    glue_sync           = var.glue_sync != null
+    dl_monitoring       = var.dead_letter_monitoring != null
+  }
+
+  from_sns = var.sns_topic_arn != null
 
   # S3 bucket ARNs carry no account id, so a cross-account warehouse bucket has
   # to name its owner explicitly or the SourceAccount conditions reject it.
@@ -18,12 +29,14 @@ locals {
   # from the standard queue when grouping is off. The queue S3 (or SNS)
   # delivers object-created events to is the group-events queue under grouping
   # and the same standard queue otherwise.
-  fifo_queue_name         = "${trimsuffix(var.sqs_fifo_queue_name, ".fifo")}.fifo"
-  oxbow_source_queue_name = local.group_events ? local.fifo_queue_name : var.sqs_queue_name
-  ingest_queue_name       = local.group_events ? var.sqs_group_queue_name : var.sqs_queue_name
+  fifo_queue_name = local.enabled.group_events ? "${trimsuffix(var.group_events.fifo_queue_name, ".fifo")}.fifo" : ""
+  fifo_dlq_name   = local.enabled.group_events ? "${trimsuffix(var.group_events.fifo_dl_queue_name, ".fifo")}.fifo" : ""
 
-  oxbow_source_queue_arn = local.group_events ? module.oxbow_fifo_queue[0].queue_arn : module.oxbow_queue[0].queue_arn
-  ingest_queue_arn       = local.group_events ? module.group_events_queue[0].queue_arn : module.oxbow_queue[0].queue_arn
+  oxbow_source_queue_name = local.enabled.group_events ? local.fifo_queue_name : var.sqs_queue_name
+  ingest_queue_name       = local.enabled.group_events ? var.group_events.queue_name : var.sqs_queue_name
+
+  oxbow_source_queue_arn = local.enabled.group_events ? module.oxbow_fifo_queue[0].queue_arn : module.oxbow_queue[0].queue_arn
+  ingest_queue_arn       = local.enabled.group_events ? module.group_events_queue[0].queue_arn : module.oxbow_queue[0].queue_arn
 
   auto_tagging_queue_name = "${var.sqs_queue_name}-auto_tagging"
   auto_tagging_function   = "${var.lambda_function_name}-auto_tagging"
@@ -48,6 +61,21 @@ locals {
   ]
 
   delta_lock_table_arns = [aws_dynamodb_table.oxbow_locking.arn, local.logstore_table_arn]
+
+  glue_catalog_resources = [
+    "arn:${local.partition}:glue:${local.region}:${local.account_id}:catalog",
+    "arn:${local.partition}:glue:${local.region}:${local.account_id}:database/*",
+    "arn:${local.partition}:glue:${local.region}:${local.account_id}:table/*",
+  ]
+
+  # The five actions a lambda's event source mapping poller needs on its queue.
+  sqs_consumer_actions = [
+    "sqs:ReceiveMessage",
+    "sqs:DeleteMessage",
+    "sqs:GetQueueAttributes",
+    "sqs:GetQueueUrl",
+    "sqs:ChangeMessageVisibility",
+  ]
 
   log_group_arn = "arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group"
 
@@ -87,9 +115,9 @@ locals {
   # Oxbow and the group-events lambda share one role, so that role needs the
   # group-events log group too; every other lambda's logs policy comes from the
   # lambda module and is already scoped to its own group.
-  group_events_log_group_arns = local.group_events ? [
-    "${local.log_group_arn}:/aws/lambda/${var.events_lambda_function_name}:*",
-    "${local.log_group_arn}:/aws/lambda/${var.events_lambda_function_name}:*:*",
+  group_events_log_group_arns = local.enabled.group_events ? [
+    "${local.log_group_arn}:/aws/lambda/${var.group_events.lambda_function_name}:*",
+    "${local.log_group_arn}:/aws/lambda/${var.group_events.lambda_function_name}:*:*",
   ] : []
 }
 
@@ -105,33 +133,34 @@ locals {
       "sqs_queue_name_dl (SQS, 80)"              = [var.sqs_queue_name_dl, 80]
       "dynamodb_table_name (DynamoDB, 255)"      = [var.dynamodb_table_name, 255]
     },
-    local.group_events ? {
-      "events_lambda_function_name (Lambda, 64)" = [var.events_lambda_function_name, 64]
-      "sqs_fifo_queue_name + .fifo (SQS, 80)"    = ["${var.sqs_fifo_queue_name}.fifo", 80]
-      "sqs_fifo_DL_queue_name + .fifo (SQS, 80)" = ["${var.sqs_fifo_DL_queue_name}.fifo", 80]
-      "sqs_group_queue_name (SQS, 80)"           = [var.sqs_group_queue_name, 80]
-      "sqs_group_DL_queue_name (SQS, 80)"        = [var.sqs_group_DL_queue_name, 80]
+    local.enabled.group_events ? {
+      "group_events.lambda_function_name (Lambda, 64)" = [var.group_events.lambda_function_name, 64]
+      "group_events.queue_name (SQS, 80)"              = [var.group_events.queue_name, 80]
+      "group_events.dl_queue_name (SQS, 80)"           = [var.group_events.dl_queue_name, 80]
+      "group_events FIFO queue name (SQS, 80)"         = [local.fifo_queue_name, 80]
+      "group_events FIFO DLQ name (SQS, 80)"           = [local.fifo_dlq_name, 80]
     } : {},
-    var.enable_auto_tagging ? {
+    local.enabled.auto_tagging ? {
       "auto-tagging function name (Lambda, 64)" = [local.auto_tagging_function, 64]
       "auto-tagging role name (IAM role, 64)"   = [local.auto_tagging_role_name, 64]
       "auto-tagging policy name (IAM, 64)"      = [local.auto_tagging_policy, 64]
       "auto-tagging queue name (SQS, 80)"       = [local.auto_tagging_queue_name, 80]
       "auto-tagging DLQ name (SQS, 80)"         = ["${local.auto_tagging_queue_name}-dl", 80]
     } : {},
-    var.enable_glue_create ? {
-      "glue_create lambda_function_name (Lambda, 64)" = [var.glue_create_config.lambda_function_name, 64]
-      "glue_create iam_role_name (IAM role, 64)"      = [var.glue_create_config.iam_role_name, 64]
-      "glue_create iam_policy_name (IAM, 64)"         = [var.glue_create_config.iam_policy_name, 64]
-      "glue_create sqs_queue_name (SQS, 80)"          = [var.glue_create_config.sqs_queue_name, 80]
-      "glue_create sqs_queue_name_dl (SQS, 80)"       = [var.glue_create_config.sqs_queue_name_dl, 80]
+    local.enabled.glue_create ? {
+      "glue_create.lambda_function_name (Lambda, 64)" = [var.glue_create.lambda_function_name, 64]
+      "glue_create.iam_role_name (IAM role, 64)"      = [var.glue_create.iam_role_name, 64]
+      "glue_create.iam_policy_name (IAM, 64)"         = [var.glue_create.iam_policy_name, 64]
+      "glue_create.sqs_queue_name (SQS, 80)"          = [var.glue_create.sqs_queue_name, 80]
+      "glue_create.sqs_queue_name_dl (SQS, 80)"       = [var.glue_create.sqs_queue_name_dl, 80]
+      "glue_create.athena_bucket_name (S3, 63)"       = [var.glue_create.athena_bucket_name, 63]
     } : {},
-    var.enable_glue_sync ? {
-      "glue_sync lambda_function_name (Lambda, 64)" = [var.glue_sync_config.lambda_function_name, 64]
-      "glue_sync iam_role_name (IAM role, 64)"      = [var.glue_sync_config.iam_role_name, 64]
-      "glue_sync iam_policy_name (IAM, 64)"         = [var.glue_sync_config.iam_policy_name, 64]
-      "glue_sync sqs_queue_name (SQS, 80)"          = [var.glue_sync_config.sqs_queue_name, 80]
-      "glue_sync sqs_queue_name_dl (SQS, 80)"       = [var.glue_sync_config.sqs_queue_name_dl, 80]
+    local.enabled.glue_sync ? {
+      "glue_sync.lambda_function_name (Lambda, 64)" = [var.glue_sync.lambda_function_name, 64]
+      "glue_sync.iam_role_name (IAM role, 64)"      = [var.glue_sync.iam_role_name, 64]
+      "glue_sync.iam_policy_name (IAM, 64)"         = [var.glue_sync.iam_policy_name, 64]
+      "glue_sync.sqs_queue_name (SQS, 80)"          = [var.glue_sync.sqs_queue_name, 80]
+      "glue_sync.sqs_queue_name_dl (SQS, 80)"       = [var.glue_sync.sqs_queue_name_dl, 80]
     } : {},
   )
 

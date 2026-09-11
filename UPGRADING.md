@@ -110,10 +110,11 @@ as inline attributes or did not have at all.
   Neither lambda is invoked by S3 *within* this module — both are driven by an
   event source mapping — but the permissions are kept for consumers who wire a
   bucket straight at the function.
-- **Enabling a stage without configuring it now fails at plan.** The
-  `glue_create_config` / `glue_sync_config` objects default to empty strings;
-  previously that surfaced partway through an apply as provider errors naming
-  neither the stage nor the missing field.
+- **A half-configured stage is now impossible.** The old `enable_*` booleans
+  were independent of the config they needed, so enabling a stage without
+  filling it in surfaced partway through an apply as provider errors naming
+  neither the stage nor the missing field. Required fields are now required by
+  the object type.
 - **`dynamodb:*` narrowed to the set delta-rs documents** plus `DescribeTable`.
   `CreateTable` is deliberately absent: this module creates the lock table, and
   the logstore table is an existing input. If you point
@@ -132,12 +133,46 @@ as inline attributes or did not have at all.
 
 ## Interface changes
 
+Every optional stage is now gated by a single config object: **`null` turns the
+stage off, a non-null object turns it on** and carries everything that stage
+needs. The `enable_*` booleans and their loose sibling variables are gone. This
+is the breaking part of the upgrade — translate your module block before
+planning.
+
 | Before | Now |
 | --- | --- |
-| `parquet_schema` was `list(any)` | typed `list(object({ name, type, parameters }))`; extra keys are now an error |
-| `dl_warning` / `dl_critical` / `dl_ok` were `any`, default `""` | `string`, default `null`; `dl_critical` is required when monitoring is on |
-| — | `manage_lambda_log_groups`, `cloudwatch_logs_retention_in_days`, `sqs_managed_sse_enabled` added |
-| — | `ingest_queue_arn`, `dead_letter_queue_arns`, `lambda_role_arn`, `dynamodb_lock_table_arn` outputs added |
+| `enable_group_events` + `events_lambda_*` + `sqs_fifo_*` + `sqs_group_*` + `group_event_lambda_*` | `group_events = { lambda_function_name, lambda_s3_bucket, lambda_s3_key, queue_name, dl_queue_name, fifo_queue_name, fifo_dl_queue_name, batch_size?, maximum_batching_window_in_seconds?, max_receive_count? }` |
+| `enable_auto_tagging` + `auto_tagging_s3_bucket` + `auto_tagging_s3_key` | `auto_tagging = { lambda_s3_bucket, lambda_s3_key }` |
+| `enable_aws_glue_catalog_table` + `glue_database_name` + `glue_table_name` + `glue_table_description` + `glue_location_uri` + `parquet_schema` | `glue_catalog_table = { database_name, table_name, location_uri, description?, columns? }` |
+| `enable_glue_create` + `glue_create_config` | `glue_create` (same fields; see the renames below) |
+| `enable_glue_sync` + `glue_sync_config` | `glue_sync` (same fields; see the renames below) |
+| `enable_bucket_notification` | `bucket_notification = {}` — or `{ events?, filter_prefix?, filter_suffix? }`, previously hard-coded |
+| `enabled_dead_letters_monitoring` + `dl_critical` + `dl_warning` + `dl_ok` + `dl_alert_recipients` + `dl_alert_message` + `tags_monitoring` + `monitoring_query_conditions` | `dead_letter_monitoring = { critical, warning?, ok?, alert_recipients?, alert_message?, tags?, query_conditions? }` |
+| `sns_topic_arn = ""` meant "no topic" | `sns_topic_arn = null` |
 
-Existing outputs — `lambda_arn`, `sqs_queue_arn`, `autotag_sqs_arn`,
-`autotag_lambda`, `dead_letters_monitor_ids` — keep their names and meaning.
+Renames inside the two glue objects:
+
+- `sns_subcription_filter_policy` → `sns_subscription_filter_policy` (the
+  original was misspelled).
+- Unset SNS filter fields are now `null` rather than `""`. Current provider
+  versions reject `filter_policy_scope = ""`.
+- `path_regex` is optional and defaults to `""`.
+
+Other input changes:
+
+- `parquet_schema` was `list(any)`; the replacement `glue_catalog_table.columns`
+  is typed `list(object({ name, type, parameters }))`, so extra keys are now an
+  error.
+- `dead_letter_monitoring.critical` is a required `number`. It is interpolated
+  into the monitor query, so a missing or non-numeric threshold used to produce
+  a malformed monitor.
+- `warehouse_bucket_account_id`, `manage_lambda_log_groups`,
+  `cloudwatch_logs_retention_in_days` and `sqs_managed_sse_enabled` are new.
+
+Outputs `lambda_arn`, `sqs_queue_arn`, `autotag_sqs_arn`, `autotag_lambda` and
+`dead_letters_monitor_ids` keep their names and meaning. New:
+`ingest_queue_arn`, `dead_letter_queue_arns`, `lambda_role_arn`,
+`dynamodb_lock_table_arn`, `enabled_stages`.
+
+Because the feature gates and the stage objects both changed, there is no
+deprecation window — this is a major version.

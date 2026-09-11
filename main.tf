@@ -11,7 +11,7 @@ locals {
       DELTA_DYNAMO_TABLE_NAME = var.logstore_dynamodb_table_name
     },
     # With grouping on, the group-events lambda already unwrapped the envelope.
-    !local.group_events && local.from_sns ? { UNWRAP_SNS_ENVELOPE = true } : {},
+    !local.enabled.group_events && local.from_sns ? { UNWRAP_SNS_ENVELOPE = true } : {},
     var.enable_schema_evolution ? { SCHEMA_EVOLUTION = true } : {},
   )
 }
@@ -43,8 +43,8 @@ module "oxbow_lambda" {
 
   use_existing_cloudwatch_log_group = !var.manage_lambda_log_groups
   cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
-  attach_policy_statements          = local.group_events
-  policy_statements = local.group_events ? {
+  attach_policy_statements          = local.enabled.group_events
+  policy_statements = local.enabled.group_events ? {
     group_events_logs = {
       effect    = "Allow"
       actions   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
@@ -66,7 +66,7 @@ module "oxbow_queue" {
   source  = "terraform-aws-modules/sqs/aws"
   version = "5.2.2"
 
-  count = local.group_events ? 0 : 1
+  count = local.enabled.group_events ? 0 : 1
 
   name                       = local.ingest_queue_name
   message_retention_seconds  = var.message_retention_seconds
@@ -93,7 +93,7 @@ module "oxbow_queue" {
 # the bucket notifying the queue directly while the queue is also subscribed to
 # a topic -- so these are additive, not either/or.
 locals {
-  s3_publishes_to_ingest_queue = var.enable_bucket_notification || !local.from_sns
+  s3_publishes_to_ingest_queue = local.enabled.bucket_notification || !local.from_sns
 
   ingest_queue_policy_statements = merge(
     local.s3_publishes_to_ingest_queue ? {
@@ -168,21 +168,15 @@ data "aws_iam_policy_document" "oxbow_lambda" {
   }
 
   statement {
-    sid    = "ConsumeQueues"
-    effect = "Allow"
-    actions = [
-      "sqs:ReceiveMessage",
-      "sqs:DeleteMessage",
-      "sqs:GetQueueAttributes",
-      "sqs:GetQueueUrl",
-      "sqs:ChangeMessageVisibility",
-    ]
+    sid       = "ConsumeQueues"
+    effect    = "Allow"
+    actions   = local.sqs_consumer_actions
     resources = local.oxbow_lambda_queue_arns
   }
 
   # The group-events lambda shares this role and writes into the FIFO queue.
   dynamic "statement" {
-    for_each = local.group_events ? [1] : []
+    for_each = local.enabled.group_events ? [1] : []
     content {
       sid       = "ProduceToFifoQueue"
       effect    = "Allow"
@@ -193,7 +187,7 @@ data "aws_iam_policy_document" "oxbow_lambda" {
 }
 
 locals {
-  oxbow_lambda_queue_arns = local.group_events ? [
+  oxbow_lambda_queue_arns = local.enabled.group_events ? [
     module.group_events_queue[0].queue_arn,
     module.oxbow_fifo_queue[0].queue_arn,
   ] : [module.oxbow_queue[0].queue_arn]

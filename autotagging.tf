@@ -5,7 +5,7 @@ module "auto_tagging_lambda" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "8.8.0"
 
-  count = var.enable_auto_tagging ? 1 : 0
+  count = local.enabled.auto_tagging ? 1 : 0
 
   function_name = local.auto_tagging_function
   description   = var.lambda_description
@@ -15,8 +15,8 @@ module "auto_tagging_lambda" {
 
   create_package = false
   s3_existing_package = {
-    bucket = var.auto_tagging_s3_bucket
-    key    = var.auto_tagging_s3_key
+    bucket = var.auto_tagging.lambda_s3_bucket
+    key    = var.auto_tagging.lambda_s3_key
   }
 
   memory_size                    = var.lambda_memory_size
@@ -48,7 +48,7 @@ module "auto_tagging_queue" {
   source  = "terraform-aws-modules/sqs/aws"
   version = "5.2.2"
 
-  count = var.enable_auto_tagging ? 1 : 0
+  count = local.enabled.auto_tagging ? 1 : 0
 
   name                       = local.auto_tagging_queue_name
   message_retention_seconds  = var.message_retention_seconds
@@ -72,7 +72,7 @@ module "auto_tagging_queue" {
 }
 
 resource "aws_sns_topic_subscription" "auto_tagging" {
-  count = var.enable_auto_tagging && local.from_sns ? 1 : 0
+  count = local.enabled.auto_tagging && local.from_sns ? 1 : 0
 
   topic_arn = var.sns_topic_arn
   protocol  = "sqs"
@@ -80,7 +80,7 @@ resource "aws_sns_topic_subscription" "auto_tagging" {
 }
 
 resource "aws_lambda_permission" "auto_tagging" {
-  count = var.enable_auto_tagging ? 1 : 0
+  count = local.enabled.auto_tagging ? 1 : 0
 
   statement_id   = "AllowExecutionFromS3Bucket"
   action         = "lambda:InvokeFunction"
@@ -91,7 +91,7 @@ resource "aws_lambda_permission" "auto_tagging" {
 }
 
 resource "aws_iam_policy" "auto_tagging" {
-  count = var.enable_auto_tagging ? 1 : 0
+  count = local.enabled.auto_tagging ? 1 : 0
 
   name        = local.auto_tagging_policy
   description = "Auto-tagging lambda access to the warehouse prefix, its queue and the Delta lock tables"
@@ -100,7 +100,7 @@ resource "aws_iam_policy" "auto_tagging" {
 }
 
 data "aws_iam_policy_document" "auto_tagging" {
-  count = var.enable_auto_tagging ? 1 : 0
+  count = local.enabled.auto_tagging ? 1 : 0
 
   statement {
     sid       = "DeltaLockTables"
@@ -132,15 +132,9 @@ data "aws_iam_policy_document" "auto_tagging" {
   }
 
   statement {
-    sid    = "ConsumeQueue"
-    effect = "Allow"
-    actions = [
-      "sqs:ReceiveMessage",
-      "sqs:DeleteMessage",
-      "sqs:GetQueueAttributes",
-      "sqs:GetQueueUrl",
-      "sqs:ChangeMessageVisibility",
-    ]
+    sid       = "ConsumeQueue"
+    effect    = "Allow"
+    actions   = local.sqs_consumer_actions
     resources = [module.auto_tagging_queue[0].queue_arn]
   }
 }

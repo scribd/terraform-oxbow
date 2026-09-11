@@ -1,6 +1,4 @@
 mock_provider "aws" {
-  # Identity data the module interpolates into ARNs, pinned so tests can assert
-  # on the ARNs it builds.
   override_data {
     target = data.aws_caller_identity.current
     values = { account_id = "123456789012" }
@@ -14,17 +12,15 @@ mock_provider "aws" {
     values = { partition = "aws" }
   }
 
-  # aws_iam_role and aws_iam_policy validate their JSON client-side, so the
-  # mocked document has to parse. Policy content is therefore asserted against
-  # the structured inputs rather than against rendered JSON.
+  # aws_iam_role and aws_iam_policy validate their JSON and ARNs client-side, so
+  # the generated mock values have to parse. Policy content is therefore
+  # asserted against the structured inputs, not against rendered JSON.
   mock_data "aws_iam_policy_document" {
     defaults = {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
     }
   }
 
-  # Attachments and the lambda's role reference validate the ARN shape, so a
-  # generated placeholder will not do.
   mock_resource "aws_iam_policy" {
     defaults = {
       arn = "arn:aws:iam::123456789012:policy/mock"
@@ -61,18 +57,24 @@ variables {
   sqs_queue_name    = "test-oxbow-queue"
   sqs_queue_name_dl = "test-oxbow-queue-dl"
 
-  enable_group_events         = true
-  events_lambda_function_name = "test-group-events"
-  events_lambda_s3_bucket     = "test-artifacts"
-  events_lambda_s3_key        = "group-events/group-events.zip"
-  sqs_fifo_queue_name         = "test-oxbow-fifo"
-  sqs_fifo_DL_queue_name      = "test-oxbow-fifo-dl"
-  sqs_group_queue_name        = "test-group-events-queue"
-  sqs_group_DL_queue_name     = "test-group-events-queue-dl"
+  group_events = {
+    lambda_function_name = "test-group-events"
+    lambda_s3_bucket     = "test-artifacts"
+    lambda_s3_key        = "group-events/group-events.zip"
+    queue_name           = "test-group-events-queue"
+    dl_queue_name        = "test-group-events-queue-dl"
+    fifo_queue_name      = "test-oxbow-fifo"
+    fifo_dl_queue_name   = "test-oxbow-fifo-dl"
+  }
 }
 
 run "grouping_swaps_the_standard_queue_for_the_fifo_pair" {
   command = plan
+
+  assert {
+    condition     = local.enabled.group_events
+    error_message = "A non-null group_events object turns the stage on"
+  }
 
   assert {
     condition     = length(module.oxbow_queue) == 0
@@ -143,12 +145,29 @@ run "fifo_names_carry_the_suffix_exactly_once" {
   command = plan
 
   variables {
-    sqs_fifo_DL_queue_name = "test-oxbow-fifo-dl.fifo"
+    group_events = {
+      lambda_function_name = "test-group-events"
+      lambda_s3_bucket     = "test-artifacts"
+      lambda_s3_key        = "group-events/group-events.zip"
+      queue_name           = "test-group-events-queue"
+      dl_queue_name        = "test-group-events-queue-dl"
+      fifo_queue_name      = "test-oxbow-fifo.fifo"
+      fifo_dl_queue_name   = "test-oxbow-fifo-dl.fifo"
+    }
   }
 
   assert {
-    condition     = local.fifo_dlq_name == "test-oxbow-fifo-dl.fifo"
+    condition     = local.fifo_queue_name == "test-oxbow-fifo.fifo" && local.fifo_dlq_name == "test-oxbow-fifo-dl.fifo"
     error_message = "A caller who already wrote .fifo must not get it appended twice"
+  }
+}
+
+run "group_events_batching_defaults_are_applied" {
+  command = plan
+
+  assert {
+    condition     = var.group_events.batch_size == 10 && var.group_events.maximum_batching_window_in_seconds == 1 && var.group_events.max_receive_count == 8
+    error_message = "Optional batching fields must default rather than requiring every caller to set them"
   }
 }
 
@@ -156,14 +175,10 @@ run "monitors_cover_both_grouping_dead_letter_queues" {
   command = plan
 
   variables {
-    enabled_dead_letters_monitoring = true
-    dl_critical                     = "1"
-    dl_warning                      = "1"
-  }
-
-  assert {
-    condition     = length(datadog_monitor.dead_letters) == 2
-    error_message = "Grouping has two dead letter queues, so two monitors"
+    dead_letter_monitoring = {
+      critical = 1
+      warning  = 1
+    }
   }
 
   assert {
@@ -172,5 +187,10 @@ run "monitors_cover_both_grouping_dead_letter_queues" {
       "test-group-events-queue-dl",
     ])
     error_message = "Monitors must name the FIFO DLQ and the group-events DLQ, lowercased"
+  }
+
+  assert {
+    condition     = length(datadog_monitor.dead_letters) == 2
+    error_message = "Grouping has two dead letter queues, so two monitors"
   }
 }
