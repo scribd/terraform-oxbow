@@ -95,7 +95,6 @@ run "minimal_deployment" {
 
   assert {
     condition = (
-      length(aws_glue_catalog_table.oxbow) == 0 &&
       length(aws_sns_topic_subscription.oxbow) == 0 &&
       length(datadog_monitor.dead_letters) == 0
     )

@@ -220,6 +220,26 @@ quiet period.
   provider versions; an empty value now means "no filter" rather than an invalid
   one.
 
+## Removed: the parquet Glue catalog table
+
+`enable_aws_glue_catalog_table`, `glue_database_name`, `glue_table_name`,
+`glue_table_description`, `glue_location_uri` and `parquet_schema` are gone.
+
+That resource declared a *plain parquet* Glue table over the S3 location — Hive
+parquet input/output formats and `ParquetHiveSerDe`, with columns supplied by
+hand. It existed to give Kinesis Firehose a schema for its JSON-to-parquet
+record format conversion, which is why the old variable description called the
+database "used by Kinesis to convert files into Parquet". Firehose is gone, and
+every consumer had the flag set to `false`, so the resource was never created.
+
+Note it was never a Delta registration: a plain-parquet table over that
+location reads every file under the prefix and ignores `_delta_log/`, so it
+would surface rows Delta has tombstoned. Delta-aware catalog registration is
+what the `glue_create` and `glue_sync` stages do.
+
+`moved.tf` carries a `removed` block with `destroy = false` for it, so any state
+that does still hold one forgets it rather than deleting a live catalog entry.
+
 ## Declined
 
 - **`s3:ListBucket` is still scoped to the bucket, not to `<s3_path>`.** Adding
@@ -242,7 +262,6 @@ planning.
 | --- | --- |
 | `enable_group_events` + `events_lambda_*` + `sqs_fifo_*` + `sqs_group_*` + `group_event_lambda_*` | `group_events = { lambda_function_name, lambda_s3_bucket, lambda_s3_key, queue_name, dl_queue_name, fifo_queue_name, fifo_dl_queue_name, batch_size?, maximum_batching_window_in_seconds?, max_receive_count? }` |
 | `enable_auto_tagging` + `auto_tagging_s3_bucket` + `auto_tagging_s3_key` | `auto_tagging = { lambda_s3_bucket, lambda_s3_key }` |
-| `enable_aws_glue_catalog_table` + `glue_database_name` + `glue_table_name` + `glue_table_description` + `glue_location_uri` + `parquet_schema` | `glue_catalog_table = { database_name, table_name, location_uri, description?, columns? }` |
 | `enable_glue_create` + `glue_create_config` | `glue_create` (same fields; see the renames below) |
 | `enable_glue_sync` + `glue_sync_config` | `glue_sync` (same fields; see the renames below) |
 | `enable_bucket_notification` | gone — the caller owns the bucket notification; see above |

@@ -39,7 +39,6 @@ fields are required by the object type, so a stage cannot be half-configured.
 | `auto_tagging` | — | auto-tagging lambda, queue, own IAM role |
 | `glue_create` | — | glue-create lambda, queue, Athena workgroup and results bucket |
 | `glue_sync` | — | glue-sync lambda and queue |
-| `glue_catalog_table` | — | a Glue catalog table over the parquet location |
 | `dead_letter_monitoring` | — | one Datadog monitor per dead letter queue |
 
 Each queue a stage creates gets a dead letter queue, and every dead letter queue
@@ -54,9 +53,9 @@ Two dependencies between stages, both enforced at plan:
   `-auto_tagging`; with `oxbow = null` it must set `function_name`, `role_name`,
   `policy_name` and `queue_name` itself.
 
-Everything else composes freely: `glue_create`, `glue_sync` and
-`glue_catalog_table` each stand alone, so the module can manage the Glue side of
-a warehouse whose Delta tables something else writes.
+Everything else composes freely: `glue_create` and `glue_sync` each stand alone,
+so the module can manage the Glue side of a warehouse whose Delta tables
+something else writes.
 
 ## Usage
 

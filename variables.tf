@@ -334,22 +334,6 @@ variable "auto_tagging" {
   }
 }
 
-variable "glue_catalog_table" {
-  type = object({
-    database_name = string
-    table_name    = string
-    location_uri  = string
-    description   = optional(string, "")
-    columns = optional(list(object({
-      name       = string
-      type       = string
-      parameters = optional(map(string))
-    })), [])
-  })
-  description = "Create a parquet-backed Glue catalog table over location_uri"
-  default     = null
-}
-
 variable "glue_create" {
   type = object({
     athena_workgroup_name = string

@@ -149,23 +149,6 @@ run "glue_stages_alone_need_no_oxbow" {
   }
 }
 
-run "glue_catalog_table_alone_needs_no_oxbow" {
-  command = plan
-
-  variables {
-    glue_catalog_table = {
-      database_name = "bronze_monolith"
-      table_name    = "test_table"
-      location_uri  = "s3://scribdinc-data-lake-test/catalogs/bronze_monolith/test_table"
-    }
-  }
-
-  assert {
-    condition     = length(aws_glue_catalog_table.oxbow) == 1 && length(module.oxbow_lambda) == 0
-    error_message = "The catalog table is independent of the lambda"
-  }
-}
-
 # group_events feeds a FIFO queue only oxbow consumes, and shares its role.
 run "group_events_without_oxbow_is_rejected" {
   command = plan

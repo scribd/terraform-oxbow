@@ -51,11 +51,6 @@ moved {
   to   = aws_sns_topic_subscription.oxbow
 }
 
-moved {
-  from = aws_glue_catalog_table.this_glue_table
-  to   = aws_glue_catalog_table.oxbow
-}
-
 ################################################################################
 # Group events
 ################################################################################
@@ -229,6 +224,14 @@ moved {
 # table and wipe a bucket's entire notification configuration. Adopt both in
 # the calling configuration -- see UPGRADING.md.
 ################################################################################
+
+removed {
+  from = aws_glue_catalog_table.this_glue_table
+
+  lifecycle {
+    destroy = false
+  }
+}
 
 removed {
   from = aws_dynamodb_table.this_oxbow_locking

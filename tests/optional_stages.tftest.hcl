@@ -182,49 +182,6 @@ run "glue_sync_is_independent_of_glue_create" {
   }
 }
 
-run "glue_catalog_table_is_parquet_backed" {
-  command = plan
-
-  variables {
-    glue_catalog_table = {
-      database_name = "bronze_monolith"
-      table_name    = "test_table"
-      location_uri  = "s3://scribdinc-data-lake-test/catalogs/bronze_monolith/test_table"
-      columns = [
-        { name = "id", type = "bigint" },
-        { name = "created_at", type = "timestamp" },
-      ]
-    }
-  }
-
-  assert {
-    condition     = one(aws_glue_catalog_table.oxbow).parameters["classification"] == "parquet"
-    error_message = "The catalog table must be classified as parquet"
-  }
-
-  assert {
-    condition     = length(one(one(aws_glue_catalog_table.oxbow).storage_descriptor).columns) == 2
-    error_message = "Every column must reach the storage descriptor"
-  }
-}
-
-run "glue_catalog_table_columns_default_to_empty" {
-  command = plan
-
-  variables {
-    glue_catalog_table = {
-      database_name = "bronze_monolith"
-      table_name    = "test_table"
-      location_uri  = "s3://scribdinc-data-lake-test/catalogs/bronze_monolith/test_table"
-    }
-  }
-
-  assert {
-    condition     = length(one(one(aws_glue_catalog_table.oxbow).storage_descriptor).columns) == 0
-    error_message = "A table with no declared columns is valid; oxbow writes the schema"
-  }
-}
-
 run "every_dead_letter_queue_gets_a_monitor" {
   command = plan
 

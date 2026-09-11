@@ -25,37 +25,3 @@ resource "aws_lambda_permission" "oxbow_from_s3" {
   source_arn     = var.warehouse_bucket_arn
   source_account = local.warehouse_bucket_account_id
 }
-
-resource "aws_glue_catalog_table" "oxbow" {
-  count = local.enabled.glue_catalog_table ? 1 : 0
-
-  name          = var.glue_catalog_table.table_name
-  description   = var.glue_catalog_table.description
-  database_name = var.glue_catalog_table.database_name
-
-  parameters = {
-    "classification" = "parquet"
-  }
-
-  storage_descriptor {
-    location      = var.glue_catalog_table.location_uri
-    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
-    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
-
-    ser_de_info {
-      parameters = {
-        "serialization.format" = "1"
-      }
-      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
-    }
-
-    dynamic "columns" {
-      for_each = var.glue_catalog_table.columns
-      content {
-        name       = columns.value.name
-        parameters = columns.value.parameters
-        type       = columns.value.type
-      }
-    }
-  }
-}

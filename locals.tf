@@ -10,14 +10,13 @@ locals {
   # One gate per optional stage. Each stage's config variable is null when the
   # stage is off, so every count and conditional in the module keys off this.
   enabled = {
-    oxbow              = var.oxbow != null
-    group_events       = var.group_events != null
-    auto_tagging       = var.auto_tagging != null
-    glue_catalog_table = var.glue_catalog_table != null
-    glue_create        = var.glue_create != null
-    glue_sync          = var.glue_sync != null
-    dl_monitoring      = var.dead_letter_monitoring != null
-    sns_delivery       = var.sns_delivery != null
+    oxbow         = var.oxbow != null
+    group_events  = var.group_events != null
+    auto_tagging  = var.auto_tagging != null
+    glue_create   = var.glue_create != null
+    glue_sync     = var.glue_sync != null
+    dl_monitoring = var.dead_letter_monitoring != null
+    sns_delivery  = var.sns_delivery != null
   }
 
   sns_topic_arn = try(var.sns_delivery.topic_arn, null)
@@ -60,8 +59,8 @@ locals {
   logstore_table_arn        = "${local.dynamodb_table_arn_prefix}/${var.logstore_dynamodb_table_name}"
 
   # The set delta-rs documents for the DynamoDB locking provider, plus the
-  # DescribeTable its client issues on init. Deliberately no CreateTable: this
-  # module creates the lock table and the logstore table is an existing input.
+  # DescribeTable its client issues on init. Deliberately no CreateTable:
+  # neither table is created here, both are existing inputs.
   # https://delta-io.github.io/delta-rs/usage/writing/writing-to-s3-with-locking-provider/
   expected_dynamodb_actions = [
     "dynamodb:GetItem",
@@ -90,8 +89,7 @@ locals {
   ]
 
   # Publishers of the object-created events, as reusable statements. Each queue
-  # composes the set that actually writes to it: the ingest queue and the
-  # auto-tagging queue have different publishers, and both paths can be live at
+  # composes the set that actually writes to it, and both paths can be live at
   # once, so these are additive rather than either/or.
   s3_send_statement = {
     effect     = "Allow"
@@ -130,9 +128,9 @@ locals {
     local.enabled.sns_delivery ? { sns_send = local.sns_send_statement } : {},
   )
 
-  # The bucket notification this module writes targets the ingest queue only, so
-  # the auto-tagging queue gets an S3 grant only when the caller says a bucket
-  # notification points at it.
+  # A caller's bucket notification normally targets the ingest queue, so the
+  # auto-tagging queue gets an S3 grant only when the caller says one points at
+  # it instead.
   auto_tagging_queue_policy_statements = merge(
     local.enabled.auto_tagging && var.auto_tagging.s3_notifies_queue ? { s3_send = local.s3_send_statement } : {},
     local.enabled.sns_delivery ? { sns_send = local.sns_send_statement } : {},
