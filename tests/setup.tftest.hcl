@@ -234,6 +234,48 @@ run "s3_delivery_scopes_queue_policy_to_bucket_and_account" {
   }
 }
 
+# The previous module granted sqs:SendMessage to Principal "*" on every dead
+# letter queue under a ForAllValues condition on aws:SourceArn. AWS evaluates
+# ForAllValues as true when the key is absent, and aws:SourceArn is absent on a
+# direct SendMessage call, so those queues were writable by any AWS account.
+run "no_queue_policy_allows_a_wildcard_principal" {
+  command = plan
+
+  assert {
+    condition = alltrue(flatten([
+      for s in values(local.ingest_queue_policy_statements) : [
+        for p in s.principals : !(s.effect == "Allow" && contains(p.identifiers, "*"))
+      ]
+    ]))
+    error_message = "An Allow statement on an ingest queue names a wildcard principal"
+  }
+
+  assert {
+    condition = alltrue([
+      for s in values(local.same_account_only_statements) : s.effect == "Deny"
+    ])
+    error_message = "The shared queue policy must be a deny; a wildcard principal is only safe under Deny"
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for s in values(local.same_account_only_statements) : [
+        for c in s.condition : !startswith(c.test, "ForAllValues:")
+      ]
+    ]))
+    error_message = "ForAllValues evaluates true when the condition key is absent; never use it to gate access"
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for s in values(local.ingest_queue_policy_statements) : [
+        for c in s.condition : !startswith(c.test, "ForAllValues:")
+      ]
+    ]))
+    error_message = "ForAllValues evaluates true when the condition key is absent; never use it to gate access"
+  }
+}
+
 run "bucket_notification_filters_on_the_configured_prefix" {
   command = plan
 

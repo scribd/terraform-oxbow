@@ -69,20 +69,8 @@ module "group_events_queue" {
   dlq_visibility_timeout_seconds = 30
   redrive_policy                 = { maxReceiveCount = 8 }
 
-  create_dlq_queue_policy = true
-  dlq_queue_policy_statements = {
-    dlq_send = {
-      sid        = "DLQSendMessages"
-      effect     = "Allow"
-      actions    = ["sqs:SendMessage"]
-      principals = [{ type = "AWS", identifiers = ["*"] }]
-      condition = [{
-        test     = "ForAllValues:StringEquals"
-        variable = "aws:SourceArn"
-        values   = ["arn:${local.partition}:sqs:${local.region}:${local.account_id}:${var.sqs_group_queue_name}"]
-      }]
-    }
-  }
+  create_dlq_queue_policy     = true
+  dlq_queue_policy_statements = local.same_account_only_statements
 
   tags = var.tags
 }
@@ -102,15 +90,18 @@ module "oxbow_fifo_queue" {
   sqs_managed_sse_enabled     = var.sqs_managed_sse_enabled
 
   # Only the group-events lambda writes here, and it does so through its IAM
-  # role, so this queue needs no resource policy of its own.
-  create_queue_policy = false
+  # role.
+  create_queue_policy     = true
+  queue_policy_statements = local.same_account_only_statements
 
   create_dlq                     = true
   dlq_name                       = var.sqs_fifo_DL_queue_name
   dlq_delay_seconds              = 0
   dlq_visibility_timeout_seconds = 30
   redrive_policy                 = { maxReceiveCount = 8 }
-  create_dlq_queue_policy        = false
+
+  create_dlq_queue_policy     = true
+  dlq_queue_policy_statements = local.same_account_only_statements
 
   tags = var.tags
 }

@@ -71,6 +71,16 @@ as inline attributes or did not have at all.
   permissions drop from the whole bucket to `<s3_path>/*` with bucket-level
   listing kept separate, and CloudWatch Logs drops from `Resource: "*"` to the
   function's own log group.
+- **The dead letter queues stop being world-writable.** Every DLQ previously
+  carried `Allow sqs:SendMessage` to `Principal: {"AWS": "*"}` gated by
+  `ForAllValues:StringEquals` on `aws:SourceArn`. AWS evaluates `ForAllValues`
+  as **true when the condition key is absent**, and `aws:SourceArn` is absent on
+  a direct `SendMessage` call — so the grant was effectively unconditional and
+  any AWS account could write to those queues. The statement also did nothing
+  useful: redrive is performed by SQS itself and is gated by the *redrive allow
+  policy*, not by the resource policy. Each DLQ now carries a single
+  `Deny` to principals outside the account instead. Check CloudWatch
+  `NumberOfMessagesSent` on your DLQs for unexplained volume before upgrading.
 - **Queue policies are rewritten.** They previously granted `sqs:SendMessage` and
   in several cases `sqs:ReceiveMessage` to `Principal: "*"`. They now name
   `s3.amazonaws.com` or `sns.amazonaws.com`, carry an `aws:SourceAccount`

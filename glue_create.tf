@@ -113,20 +113,8 @@ module "glue_create_queue" {
   dlq_visibility_timeout_seconds = 30
   redrive_policy                 = { maxReceiveCount = var.sqs_redrive_policy_maxReceiveCount }
 
-  create_dlq_queue_policy = true
-  dlq_queue_policy_statements = {
-    dlq_send = {
-      sid        = "DLQSendMessages"
-      effect     = "Allow"
-      actions    = ["sqs:SendMessage"]
-      principals = [{ type = "AWS", identifiers = ["*"] }]
-      condition = [{
-        test     = "ForAllValues:StringEquals"
-        variable = "aws:SourceArn"
-        values   = ["arn:${local.partition}:sqs:${local.region}:${local.account_id}:${var.glue_create_config.sqs_queue_name}"]
-      }]
-    }
-  }
+  create_dlq_queue_policy     = true
+  dlq_queue_policy_statements = local.same_account_only_statements
 
   tags = var.tags
 }

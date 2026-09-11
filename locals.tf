@@ -32,6 +32,28 @@ locals {
 
   log_group_arn = "arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group"
 
+  # Queues with no cross-service publisher need no resource policy at all, but
+  # the previous version of this module left a world-writable one on them
+  # (Allow sqs:SendMessage to Principal "*" under a ForAllValues condition on
+  # aws:SourceArn, which AWS evaluates as true whenever the key is absent --
+  # i.e. on every direct SendMessage call). Dropping the policy from config
+  # would leave that grant in place, since aws_sqs_queue.policy is computed, so
+  # overwrite it with a deny instead. Redrive is gated by the redrive allow
+  # policy, not by this.
+  same_account_only_statements = {
+    deny_outside_account = {
+      sid        = "DenyOutsideAccount"
+      effect     = "Deny"
+      actions    = ["sqs:*"]
+      principals = [{ type = "AWS", identifiers = ["*"] }]
+      condition = [{
+        test     = "StringNotEquals"
+        variable = "aws:PrincipalAccount"
+        values   = [local.account_id]
+      }]
+    }
+  }
+
   # Oxbow and the group-events lambda share one role, so that role needs the
   # group-events log group too; every other lambda's logs policy comes from the
   # lambda module and is already scoped to its own group.
