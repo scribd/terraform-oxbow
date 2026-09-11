@@ -24,7 +24,7 @@ module "auto_tagging_lambda" {
   reserved_concurrent_executions = var.lambda_reserved_concurrent_executions
 
   environment_variables = {
-    UNWRAP_SNS_ENVELOPE = local.from_sns
+    UNWRAP_SNS_ENVELOPE = local.enabled.sns_delivery
   }
 
   role_name     = local.auto_tagging_role_name
@@ -72,11 +72,15 @@ module "auto_tagging_queue" {
 }
 
 resource "aws_sns_topic_subscription" "auto_tagging" {
-  count = local.enabled.auto_tagging && local.from_sns ? 1 : 0
+  count = local.enabled.auto_tagging && local.enabled.sns_delivery ? 1 : 0
 
-  topic_arn = var.sns_topic_arn
-  protocol  = "sqs"
-  endpoint  = module.auto_tagging_queue[0].queue_arn
+  topic_arn           = local.sns_topic_arn
+  protocol            = "sqs"
+  endpoint            = module.auto_tagging_queue[0].queue_arn
+  filter_policy       = var.auto_tagging.filter_policy
+  filter_policy_scope = var.auto_tagging.filter_policy_scope
+
+  depends_on = [module.auto_tagging_queue]
 }
 
 resource "aws_lambda_permission" "auto_tagging" {

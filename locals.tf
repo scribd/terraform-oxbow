@@ -17,9 +17,10 @@ locals {
     glue_create         = var.glue_create != null
     glue_sync           = var.glue_sync != null
     dl_monitoring       = var.dead_letter_monitoring != null
+    sns_delivery        = var.sns_delivery != null
   }
 
-  from_sns = var.sns_topic_arn != null
+  sns_topic_arn = try(var.sns_delivery.topic_arn, null)
 
   # S3 bucket ARNs carry no account id, so a cross-account warehouse bucket has
   # to name its owner explicitly or the SourceAccount conditions reject it.

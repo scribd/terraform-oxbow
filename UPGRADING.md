@@ -148,15 +148,25 @@ planning.
 | `enable_glue_sync` + `glue_sync_config` | `glue_sync` (same fields; see the renames below) |
 | `enable_bucket_notification` | `bucket_notification = {}` — or `{ events?, filter_prefix?, filter_suffix? }`, previously hard-coded |
 | `enabled_dead_letters_monitoring` + `dl_critical` + `dl_warning` + `dl_ok` + `dl_alert_recipients` + `dl_alert_message` + `tags_monitoring` + `monitoring_query_conditions` | `dead_letter_monitoring = { critical, warning?, ok?, alert_recipients?, alert_message?, tags?, query_conditions? }` |
-| `sns_topic_arn = ""` meant "no topic" | `sns_topic_arn = null` |
+| `sns_topic_arn = ""` meant "no topic" | `sns_delivery = { topic_arn, filter_policy?, filter_policy_scope? }`, or null |
 
-Renames inside the two glue objects:
+### SNS subscription filters
 
-- `sns_subcription_filter_policy` → `sns_subscription_filter_policy` (the
-  original was misspelled).
-- Unset SNS filter fields are now `null` rather than `""`. Current provider
-  versions reject `filter_policy_scope = ""`.
-- `path_regex` is optional and defaults to `""`.
+Every stage that subscribes to a topic now takes the same two fields, named
+after the provider attributes they set:
+
+- `sns_subcription_filter_policy` → `filter_policy` in both glue objects. The
+  original was misspelled; the capability itself is unchanged there.
+- `sns_delivery.filter_policy` / `.filter_policy_scope` and
+  `auto_tagging.filter_policy` / `.filter_policy_scope` are **new**. Those two
+  subscriptions previously had no filter and received the entire topic, so if
+  you were filtering downstream in the lambda you can now do it at the
+  subscription.
+- Unset filter fields are `null`, not `""`. Current provider versions reject
+  `filter_policy_scope = ""`, and the module now validates that the policy
+  parses as JSON, that the scope is one of the two accepted values, and that a
+  scope is never set without a policy.
+- `path_regex` is optional in both glue objects and defaults to `""`.
 
 Other input changes:
 

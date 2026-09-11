@@ -122,11 +122,13 @@ module "glue_create_queue" {
 resource "aws_sns_topic_subscription" "glue_create" {
   count = local.enabled.glue_create ? 1 : 0
 
-  filter_policy       = var.glue_create.sns_subscription_filter_policy
+  filter_policy       = var.glue_create.filter_policy
   filter_policy_scope = var.glue_create.filter_policy_scope
   topic_arn           = var.glue_create.sns_topic_arn
   protocol            = "sqs"
   endpoint            = module.glue_create_queue[0].queue_arn
+
+  depends_on = [module.glue_create_queue]
 }
 
 resource "aws_iam_policy" "glue_create" {

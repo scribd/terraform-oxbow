@@ -115,7 +115,7 @@ run "grouping_moves_sns_unwrapping_to_the_group_events_lambda" {
   command = plan
 
   variables {
-    sns_topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+    sns_delivery = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
   }
 
   assert {

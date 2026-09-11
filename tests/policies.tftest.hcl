@@ -195,7 +195,7 @@ run "both_delivery_paths_are_admitted_when_both_are_configured" {
 
   variables {
     bucket_notification = {}
-    sns_topic_arn       = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+    sns_delivery        = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
   }
 
   assert {
@@ -208,7 +208,7 @@ run "sns_only_deployment_does_not_admit_s3" {
   command = plan
 
   variables {
-    sns_topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+    sns_delivery = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
   }
 
   assert {
@@ -336,4 +336,135 @@ run "no_identity_policy_action_uses_a_wildcard" {
     condition     = !contains(local.sqs_consumer_actions, "sqs:SendMessage")
     error_message = "A queue consumer has no business sending; the FIFO producer grant is separate"
   }
+}
+
+################################################################################
+# SNS subscription filters
+#
+# glue_create and glue_sync already had a filter policy; those fields were only
+# renamed to match the provider attribute. The oxbow ingest subscription and the
+# auto-tagging subscription previously had none and took the whole topic.
+################################################################################
+
+run "ingest_subscription_filter_reaches_the_subscription" {
+  command = plan
+
+  variables {
+    sns_delivery = {
+      topic_arn           = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      filter_policy       = "{\"prefix\":[\"catalogs/bronze_monolith/\"]}"
+      filter_policy_scope = "MessageBody"
+    }
+  }
+
+  assert {
+    condition     = one(aws_sns_topic_subscription.oxbow).filter_policy == "{\"prefix\":[\"catalogs/bronze_monolith/\"]}"
+    error_message = "The ingest subscription must carry the configured filter policy"
+  }
+}
+
+run "ingest_subscription_is_unfiltered_when_no_policy_is_given" {
+  command = plan
+
+  variables {
+    sns_delivery = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
+  }
+
+  assert {
+    condition     = one(aws_sns_topic_subscription.oxbow).filter_policy == null
+    error_message = "Omitting the filter must subscribe to the whole topic, not send an empty policy"
+  }
+}
+
+# Auto tagging shares the topic but is a separate subscription, so it can take a
+# narrower slice than oxbow.
+run "auto_tagging_filter_is_independent_of_the_ingest_filter" {
+  command = plan
+
+  variables {
+    sns_delivery = {
+      topic_arn     = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      filter_policy = "{\"prefix\":[\"catalogs/\"]}"
+    }
+    auto_tagging = {
+      lambda_s3_bucket = "test-artifacts"
+      lambda_s3_key    = "auto-tagging/auto-tagging.zip"
+      filter_policy    = "{\"prefix\":[\"catalogs/bronze_monolith/\"]}"
+    }
+  }
+
+  assert {
+    condition = (
+      one(aws_sns_topic_subscription.auto_tagging).filter_policy == "{\"prefix\":[\"catalogs/bronze_monolith/\"]}" &&
+      one(aws_sns_topic_subscription.oxbow).filter_policy == "{\"prefix\":[\"catalogs/\"]}"
+    )
+    error_message = "Each subscription must carry its own filter, not a shared one"
+  }
+}
+
+run "glue_stage_filters_survive_the_field_rename" {
+  command = plan
+
+  variables {
+    glue_sync = {
+      lambda_s3_bucket     = "test-artifacts"
+      lambda_s3_key        = "glue-sync/glue-sync.zip"
+      lambda_function_name = "test-glue-sync"
+      sns_topic_arn        = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      sqs_queue_name       = "test-glue-sync-queue"
+      sqs_queue_name_dl    = "test-glue-sync-queue-dl"
+      iam_role_name        = "test-glue-sync-role"
+      iam_policy_name      = "test-glue-sync-policy"
+      filter_policy        = "{\"table\":[\"accounts\"]}"
+      filter_policy_scope  = "MessageBody"
+    }
+  }
+
+  assert {
+    condition     = one(aws_sns_topic_subscription.glue_sync).filter_policy == "{\"table\":[\"accounts\"]}"
+    error_message = "The renamed field must still reach the subscription"
+  }
+}
+
+run "malformed_filter_policy_json_is_rejected" {
+  command = plan
+
+  variables {
+    sns_delivery = {
+      topic_arn     = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      filter_policy = "{not json"
+    }
+  }
+
+  expect_failures = [var.sns_delivery]
+}
+
+run "unknown_filter_policy_scope_is_rejected" {
+  command = plan
+
+  variables {
+    sns_delivery = {
+      topic_arn           = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      filter_policy       = "{\"prefix\":[\"catalogs/\"]}"
+      filter_policy_scope = "MessageHeaders"
+    }
+  }
+
+  expect_failures = [var.sns_delivery]
+}
+
+# A scope with no policy silently filters nothing, which looks like a working
+# filter until you notice every message arriving.
+run "filter_policy_scope_without_a_policy_is_rejected" {
+  command = plan
+
+  variables {
+    auto_tagging = {
+      lambda_s3_bucket    = "test-artifacts"
+      lambda_s3_key       = "auto-tagging/auto-tagging.zip"
+      filter_policy_scope = "MessageBody"
+    }
+  }
+
+  expect_failures = [var.auto_tagging]
 }

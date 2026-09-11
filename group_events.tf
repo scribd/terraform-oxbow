@@ -25,7 +25,7 @@ module "group_events_lambda" {
       RUST_LOG  = var.rust_log_oxbow_debug_level
       QUEUE_URL = module.oxbow_fifo_queue[0].queue_url
     },
-    local.from_sns ? { UNWRAP_SNS_ENVELOPE = true } : {},
+    local.enabled.sns_delivery ? { UNWRAP_SNS_ENVELOPE = true } : {},
   )
 
   # Shares the oxbow role, which is why that role carries this function's log

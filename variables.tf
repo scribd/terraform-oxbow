@@ -204,14 +204,37 @@ variable "sqs_managed_sse_enabled" {
 # Event delivery
 ################################################################################
 
-variable "sns_topic_arn" {
-  type        = string
-  description = "Subscribe the ingest queues to this topic instead of taking S3 events directly"
+variable "sns_delivery" {
+  type = object({
+    topic_arn           = string
+    filter_policy       = optional(string)
+    filter_policy_scope = optional(string)
+  })
+  description = <<-EOT
+    Subscribe the ingest queue to this topic instead of taking S3 events
+    directly. filter_policy is the raw SNS subscription filter policy JSON and
+    filter_policy_scope is MessageAttributes (the AWS default) or MessageBody.
+  EOT
   default     = null
 
   validation {
-    condition     = var.sns_topic_arn == null || startswith(coalesce(var.sns_topic_arn, "arn:"), "arn:")
-    error_message = "sns_topic_arn must be a topic ARN, or null to take S3 events directly."
+    condition     = var.sns_delivery == null || startswith(var.sns_delivery.topic_arn, "arn:")
+    error_message = "sns_delivery.topic_arn must be a topic ARN."
+  }
+
+  validation {
+    condition     = var.sns_delivery == null || var.sns_delivery.filter_policy == null || can(jsondecode(var.sns_delivery.filter_policy))
+    error_message = "sns_delivery.filter_policy must be valid JSON."
+  }
+
+  validation {
+    condition     = var.sns_delivery == null || var.sns_delivery.filter_policy_scope == null || contains(["MessageAttributes", "MessageBody"], coalesce(var.sns_delivery.filter_policy_scope, "x"))
+    error_message = "sns_delivery.filter_policy_scope must be MessageAttributes, MessageBody, or null."
+  }
+
+  validation {
+    condition     = var.sns_delivery == null || var.sns_delivery.filter_policy_scope == null || var.sns_delivery.filter_policy != null
+    error_message = "sns_delivery.filter_policy_scope has no effect without filter_policy."
   }
 }
 
@@ -262,16 +285,34 @@ variable "group_events" {
 
 variable "auto_tagging" {
   type = object({
-    lambda_s3_bucket = string
-    lambda_s3_key    = string
+    lambda_s3_bucket    = string
+    lambda_s3_key       = string
+    filter_policy       = optional(string)
+    filter_policy_scope = optional(string)
   })
   description = <<-EOT
     Tag objects as they land, on its own queue, lambda and IAM role. Names are
     derived from the oxbow names with an "-auto_tagging" suffix. This module
-    does not route events to its queue: set sns_topic_arn, or wire the bucket to
-    the autotag_sqs_arn output.
+    does not route events to its queue: set sns_delivery, or wire the bucket to
+    the autotag_sqs_arn output. The filter fields apply to its own subscription,
+    so it can take a narrower slice of the topic than oxbow does.
   EOT
   default     = null
+
+  validation {
+    condition     = var.auto_tagging == null || var.auto_tagging.filter_policy == null || can(jsondecode(var.auto_tagging.filter_policy))
+    error_message = "auto_tagging.filter_policy must be valid JSON."
+  }
+
+  validation {
+    condition     = var.auto_tagging == null || var.auto_tagging.filter_policy_scope == null || contains(["MessageAttributes", "MessageBody"], coalesce(var.auto_tagging.filter_policy_scope, "x"))
+    error_message = "auto_tagging.filter_policy_scope must be MessageAttributes, MessageBody, or null."
+  }
+
+  validation {
+    condition     = var.auto_tagging == null || var.auto_tagging.filter_policy_scope == null || var.auto_tagging.filter_policy != null
+    error_message = "auto_tagging.filter_policy_scope has no effect without filter_policy."
+  }
 }
 
 variable "glue_catalog_table" {
@@ -292,20 +333,20 @@ variable "glue_catalog_table" {
 
 variable "glue_create" {
   type = object({
-    athena_workgroup_name          = string
-    athena_data_source             = string
-    athena_bucket_name             = string
-    lambda_s3_bucket               = string
-    lambda_s3_key                  = string
-    lambda_function_name           = string
-    sns_topic_arn                  = string
-    sqs_queue_name                 = string
-    sqs_queue_name_dl              = string
-    iam_role_name                  = string
-    iam_policy_name                = string
-    path_regex                     = optional(string, "")
-    sns_subscription_filter_policy = optional(string)
-    filter_policy_scope            = optional(string)
+    athena_workgroup_name = string
+    athena_data_source    = string
+    athena_bucket_name    = string
+    lambda_s3_bucket      = string
+    lambda_s3_key         = string
+    lambda_function_name  = string
+    sns_topic_arn         = string
+    sqs_queue_name        = string
+    sqs_queue_name_dl     = string
+    iam_role_name         = string
+    iam_policy_name       = string
+    path_regex            = optional(string, "")
+    filter_policy         = optional(string)
+    filter_policy_scope   = optional(string)
   })
   description = "Create Glue catalog tables from the S3 path, running DDL through a dedicated Athena workgroup"
   default     = null
@@ -316,31 +357,51 @@ variable "glue_create" {
   }
 
   validation {
+    condition     = var.glue_create == null || var.glue_create.filter_policy == null || can(jsondecode(var.glue_create.filter_policy))
+    error_message = "glue_create.filter_policy must be valid JSON."
+  }
+
+  validation {
     condition     = var.glue_create == null || var.glue_create.filter_policy_scope == null || contains(["MessageAttributes", "MessageBody"], coalesce(var.glue_create.filter_policy_scope, "x"))
     error_message = "glue_create.filter_policy_scope must be MessageAttributes, MessageBody, or null."
+  }
+
+  validation {
+    condition     = var.glue_create == null || var.glue_create.filter_policy_scope == null || var.glue_create.filter_policy != null
+    error_message = "glue_create.filter_policy_scope has no effect without filter_policy."
   }
 }
 
 variable "glue_sync" {
   type = object({
-    lambda_s3_bucket               = string
-    lambda_s3_key                  = string
-    lambda_function_name           = string
-    sns_topic_arn                  = string
-    sqs_queue_name                 = string
-    sqs_queue_name_dl              = string
-    iam_role_name                  = string
-    iam_policy_name                = string
-    path_regex                     = optional(string, "")
-    sns_subscription_filter_policy = optional(string)
-    filter_policy_scope            = optional(string)
+    lambda_s3_bucket     = string
+    lambda_s3_key        = string
+    lambda_function_name = string
+    sns_topic_arn        = string
+    sqs_queue_name       = string
+    sqs_queue_name_dl    = string
+    iam_role_name        = string
+    iam_policy_name      = string
+    path_regex           = optional(string, "")
+    filter_policy        = optional(string)
+    filter_policy_scope  = optional(string)
   })
   description = "Keep existing Glue catalog tables in step with the Delta tables oxbow writes"
   default     = null
 
   validation {
+    condition     = var.glue_sync == null || var.glue_sync.filter_policy == null || can(jsondecode(var.glue_sync.filter_policy))
+    error_message = "glue_sync.filter_policy must be valid JSON."
+  }
+
+  validation {
     condition     = var.glue_sync == null || var.glue_sync.filter_policy_scope == null || contains(["MessageAttributes", "MessageBody"], coalesce(var.glue_sync.filter_policy_scope, "x"))
     error_message = "glue_sync.filter_policy_scope must be MessageAttributes, MessageBody, or null."
+  }
+
+  validation {
+    condition     = var.glue_sync == null || var.glue_sync.filter_policy_scope == null || var.glue_sync.filter_policy != null
+    error_message = "glue_sync.filter_policy_scope has no effect without filter_policy."
   }
 }
 

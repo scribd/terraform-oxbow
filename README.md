@@ -110,12 +110,36 @@ point at is the `ingest_queue_arn` output.
 
 ## Event delivery
 
-Leave `sns_topic_arn` null and S3 notifies the ingest queue directly. Set it
-and the module subscribes the ingest queue to the topic instead, and sets
+Leave `sns_delivery` null and S3 notifies the ingest queue directly. Set it and
+the module subscribes the ingest queue to that topic instead, and sets
 `UNWRAP_SNS_ENVELOPE` on whichever lambda reads the envelope first — the
 group-events lambda when grouping is on, oxbow otherwise. The queue policy
 follows: it admits `s3.amazonaws.com` scoped to the bucket and account, or
-`sns.amazonaws.com` scoped to the topic.
+`sns.amazonaws.com` scoped to the topic. Both publishers can be live at once.
+
+Every stage that subscribes to a topic takes its own `filter_policy` (raw SNS
+filter policy JSON) and `filter_policy_scope` (`MessageAttributes`, the AWS
+default, or `MessageBody`), so each can take a different slice of the same
+topic:
+
+| Stage | Topic | Filter fields |
+| --- | --- | --- |
+| ingest queue | `sns_delivery.topic_arn` | `sns_delivery.filter_policy` / `.filter_policy_scope` |
+| auto tagging | `sns_delivery.topic_arn` | `auto_tagging.filter_policy` / `.filter_policy_scope` |
+| glue create | `glue_create.sns_topic_arn` | `glue_create.filter_policy` / `.filter_policy_scope` |
+| glue sync | `glue_sync.sns_topic_arn` | `glue_sync.filter_policy` / `.filter_policy_scope` |
+
+```hcl
+  sns_delivery = {
+    topic_arn     = aws_sns_topic.warehouse_events.arn
+    filter_policy = jsonencode({ prefix = ["catalogs/bronze_monolith/"] })
+  }
+```
+
+An omitted `filter_policy` subscribes to the whole topic. The module validates
+that the policy parses as JSON, that the scope is one of the two accepted
+values, and that a scope is not set without a policy — which otherwise filters
+nothing while looking like it works.
 
 ## Naming limits
 

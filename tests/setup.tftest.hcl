@@ -158,7 +158,7 @@ run "sns_delivery_sets_unwrap_and_subscribes" {
   command = plan
 
   variables {
-    sns_topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+    sns_delivery = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
   }
 
   assert {

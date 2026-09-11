@@ -11,7 +11,7 @@ locals {
       DELTA_DYNAMO_TABLE_NAME = var.logstore_dynamodb_table_name
     },
     # With grouping on, the group-events lambda already unwrapped the envelope.
-    !local.enabled.group_events && local.from_sns ? { UNWRAP_SNS_ENVELOPE = true } : {},
+    !local.enabled.group_events && local.enabled.sns_delivery ? { UNWRAP_SNS_ENVELOPE = true } : {},
     var.enable_schema_evolution ? { SCHEMA_EVOLUTION = true } : {},
   )
 }
@@ -93,7 +93,7 @@ module "oxbow_queue" {
 # the bucket notifying the queue directly while the queue is also subscribed to
 # a topic -- so these are additive, not either/or.
 locals {
-  s3_publishes_to_ingest_queue = local.enabled.bucket_notification || !local.from_sns
+  s3_publishes_to_ingest_queue = local.enabled.bucket_notification || !local.enabled.sns_delivery
 
   ingest_queue_policy_statements = merge(
     local.s3_publishes_to_ingest_queue ? {
@@ -115,7 +115,7 @@ locals {
         ]
       }
     } : {},
-    local.from_sns ? {
+    local.enabled.sns_delivery ? {
       sns_send = {
         effect     = "Allow"
         actions    = ["sqs:SendMessage"]
@@ -123,7 +123,7 @@ locals {
         condition = [{
           test     = "ArnEquals"
           variable = "aws:SourceArn"
-          values   = [var.sns_topic_arn]
+          values   = [local.sns_topic_arn]
         }]
       }
     } : {},
