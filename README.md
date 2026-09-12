@@ -23,10 +23,10 @@ S3 (or SNS) ──► oxbow queue ──► oxbow lambda ──► Delta table
 S3 (or SNS) ──► group queue ──► group-events lambda ──► FIFO queue ──► oxbow lambda
                      │                                       │
                      └──► DLQ                                └──► DLQ
+```
 
 The bucket notification and the two DynamoDB tables are the caller's: this
 module takes their names and points its policies at them.
-```
 
 Every stage, the core included, is gated by one variable: **null turns it off, a
 config object turns it on** and carries everything that stage needs. Required
@@ -40,6 +40,7 @@ fields are required by the object type, so a stage cannot be half-configured.
 | `glue_create` | — | glue-create lambda, queue, Athena workgroup and results bucket |
 | `glue_sync` | — | glue-sync lambda and queue |
 | `dead_letter_monitoring` | — | one Datadog monitor per dead letter queue |
+| `sns_delivery` | S3 feeds the ingest queue directly | a topic subscription for the ingest queue — see Event delivery |
 
 Each queue a stage creates gets a dead letter queue, and every dead letter queue
 gets a monitor when `dead_letter_monitoring` is set. The `enabled_stages` output
@@ -128,9 +129,11 @@ outlives any single pipeline, so neither belongs to this module:
   delta-rs hard-codes `key` as the lock table's partition key.
 
 Of the bucket, the module needs only what its policies reference:
-`warehouse_bucket_arn` and `s3_path` scope every grant to `<bucket>/<s3_path>/*`,
-and `warehouse_bucket_account_id` fills the `aws:SourceAccount` conditions when
-the bucket lives in another account.
+`warehouse_bucket_arn` and `s3_path` scope the object grants to
+`<bucket>/<s3_path>/*`, and `warehouse_bucket_account_id` fills the
+`aws:SourceAccount` conditions when the bucket lives in another account.
+Bucket-level listing (`s3:ListBucket`) is still granted on the bucket rather
+than the prefix — see the declined findings in UPGRADING.md.
 
 UPGRADING.md has copy-pasteable resources for both.
 
@@ -181,12 +184,40 @@ nothing while looking like it works.
 
 ## Naming limits
 
-Several names are derived rather than passed in (`<lambda_function_name>-auto_tagging`,
-`<sqs_queue_name>-auto_tagging-dl`). Lambda, SQS and DynamoDB name limits are
-enforced by AWS at *apply*, not at plan, so an over-long derived name fails
-partway through an apply. The module checks those names against their limits at
-plan time and fails with the offending name and its length. IAM, Athena and S3
-names are left out: the provider already validates them client-side at plan.
+Several names are derived rather than passed in
+(`<oxbow.lambda_function_name>-auto_tagging`, `<oxbow.queue_name>-auto_tagging-dl`).
+AWS enforces Lambda (64) and SQS (80) name limits at *apply*, not at plan, so an
+over-long derived name fails partway through an apply. The module checks those
+names at plan time and fails with the offending name and its length. IAM, Athena
+and S3 names are left out because the provider already validates them
+client-side at plan, and the DynamoDB tables because the module no longer
+creates them.
+
+## Required inputs
+
+`warehouse_bucket_arn`, `s3_path`, `dynamodb_table_name`,
+`logstore_dynamodb_table_name`, `aws_s3_locking_provider`,
+`rust_log_deltalake_debug_level` and `rust_log_oxbow_debug_level`. Everything
+else is a stage object (null-gated, above) or a tunable with a default:
+
+| Variable | Default | |
+| --- | --- | --- |
+| `lambda_description` | `"Oxbow lambda for converting parquet files to delta tables"` | |
+| `lambda_timeout` | `120` | seconds, for the oxbow, auto-tagging and glue lambdas |
+| `lambda_memory_size` | `128` | MB, same three; the group-events lambda takes `group_events.memory_size` |
+| `lambda_reserved_concurrent_executions` | `1` | oxbow and auto-tagging |
+| `architectures` | `["x86_64"]` | or `["arm64"]` |
+| `enable_schema_evolution` | `true` | sets `SCHEMA_EVOLUTION` on oxbow |
+| `manage_lambda_log_groups` | `true` | see below |
+| `cloudwatch_logs_retention_in_days` | `null` | null keeps logs forever |
+| `sqs_visibility_timeout_seconds` | `120` | primary queues; DLQs stay at 30 |
+| `sqs_delay_seconds` | `180` | primary queues; DLQs stay at 0 |
+| `sqs_redrive_policy_maxReceiveCount` | `10` | receives before a message dead-letters |
+| `message_retention_seconds` | `1209600` | every queue this module creates |
+| `sqs_managed_sse_enabled` | `true` | SSE-SQS needs no KMS grants |
+| `warehouse_bucket_account_id` | `null` | defaults to the current account |
+| `s3_notifies_ingest_queue` | `true` | see Event delivery |
+| `tags` | `{}` | every AWS resource this module creates |
 
 ## Lambda log groups
 
