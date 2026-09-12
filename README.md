@@ -196,6 +196,13 @@ that one group instead of `*`. A deployment whose log groups already exist —
 created implicitly by the Lambda service on first invocation — must either set
 it to `false` or import them; see [UPGRADING.md](UPGRADING.md).
 
+## Examples
+
+[`examples/`](examples/) has a runnable root module per deployment shape —
+`minimal`, `sns-delivery`, `complete` and `glue-only` — each validated in CI.
+They also show the caller's side of what this module does not own: the two
+DynamoDB lock tables and, where used, the bucket notification.
+
 ## Tests
 
 ```
