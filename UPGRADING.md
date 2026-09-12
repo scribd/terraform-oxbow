@@ -161,16 +161,31 @@ as inline attributes or did not have at all.
   affect S3 or SNS delivery. Set the variable to `false` to keep queues
   unencrypted.
 
-## Two resources are replaced, not updated
+## Removed: the S3 invoke permissions
 
-Adding `source_account` to `aws_lambda_permission` is a ForceNew attribute, so
-the two invoke permissions (`oxbow_from_s3` and, if auto-tagging is on,
-`auto_tagging`) are removed and re-added rather than updated. That is the only
-exception to "nothing is destroyed" above. It matters only if a bucket
-notification owned outside this module invokes those functions *directly* —
-S3 does not retry an authorization failure, so events during the short
-replacement window would be lost. If that describes your setup, apply during a
-quiet period.
+Both `aws_lambda_permission` resources are gone and **will be destroyed** on
+upgrade. They granted `s3.amazonaws.com` the right to invoke the oxbow and
+auto-tagging functions, but nothing uses that right: every module instance
+drives its lambda through an SQS event source mapping, and the bucket
+notification this module used to write targeted the *queue*, never a function.
+Checked against every live call site — `scribdinc/logs-fastly` (three
+instances), `scribd/airbyte` and `scribd/terraform-payments` — none invokes a
+function directly from S3.
+
+This is the one place the upgrade destroys something, and it is a grant
+removal, so it cannot break a path that was working. If you do point a bucket
+notification straight at one of these functions, add your own:
+
+```hcl
+resource "aws_lambda_permission" "oxbow_from_s3" {
+  statement_id   = "AllowExecutionFromS3Bucket"
+  action         = "lambda:InvokeFunction"
+  function_name  = module.oxbow.lambda_arn
+  principal      = "s3.amazonaws.com"
+  source_arn     = module.warehouse.s3_bucket_arn
+  source_account = data.aws_caller_identity.current.account_id
+}
+```
 
 ## Also fixed in the policy audit
 
@@ -249,6 +264,17 @@ that does still hold one forgets it rather than deleting a live catalog entry.
   `s3:GetObjectVersion` and `s3:DeleteObjectTagging`, which trace to no call the
   delta-rs docs name but were live before this change. Both want a dev apply to
   confirm before tightening; tracked separately rather than guessed at here.
+
+## What each known call site must do
+
+| Repo | Change needed |
+| --- | --- |
+| `scribdinc/logs-fastly` (×3) | SNS-fed: set `s3_notifies_ingest_queue = false`; adopt the lock table |
+| `scribd/airbyte` | SNS-fed: set `s3_notifies_ingest_queue = false`; adopt the lock table |
+| `scribd/terraform-payments` | Had `enable_bucket_notification = true`: adopt the bucket notification *and* the lock table; the `s3_notifies_ingest_queue` default is already correct |
+
+All three also need the flat variables translated to the objects below, and a
+decision on `manage_lambda_log_groups`.
 
 ## Interface changes
 

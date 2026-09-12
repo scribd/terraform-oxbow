@@ -83,17 +83,6 @@ resource "aws_sns_topic_subscription" "auto_tagging" {
   depends_on = [module.auto_tagging_queue]
 }
 
-resource "aws_lambda_permission" "auto_tagging" {
-  count = local.enabled.auto_tagging ? 1 : 0
-
-  statement_id   = "AllowExecutionFromS3Bucket"
-  action         = "lambda:InvokeFunction"
-  function_name  = module.auto_tagging_lambda[0].lambda_function_arn
-  principal      = "s3.amazonaws.com"
-  source_arn     = var.warehouse_bucket_arn
-  source_account = local.warehouse_bucket_account_id
-}
-
 resource "aws_iam_policy" "auto_tagging" {
   count = local.enabled.auto_tagging ? 1 : 0
 

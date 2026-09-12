@@ -237,11 +237,6 @@ run "cross_account_warehouse_bucket_is_supported" {
     ])
     error_message = "SourceAccount must name the bucket owner, not the deploying account"
   }
-
-  assert {
-    condition     = one(aws_lambda_permission.oxbow_from_s3).source_account == "210987654321"
-    error_message = "The lambda permission must be scoped to the bucket owner too"
-  }
 }
 
 run "warehouse_bucket_account_defaults_to_this_account" {
@@ -250,32 +245,6 @@ run "warehouse_bucket_account_defaults_to_this_account" {
   assert {
     condition     = local.warehouse_bucket_account_id == "123456789012"
     error_message = "Omitting the variable must keep the current account"
-  }
-}
-
-# Bucket names are global, so without source_account a same-named bucket in
-# another account could invoke the function.
-run "lambda_permissions_are_scoped_to_bucket_and_account" {
-  command = plan
-
-  variables {
-    auto_tagging = {
-      lambda_s3_bucket = "test-artifacts"
-      lambda_s3_key    = "auto-tagging/auto-tagging.zip"
-    }
-  }
-
-  assert {
-    condition = (
-      one(aws_lambda_permission.oxbow_from_s3).source_arn == "arn:aws:s3:::scribdinc-data-lake-test" &&
-      one(aws_lambda_permission.oxbow_from_s3).source_account == "123456789012"
-    )
-    error_message = "The oxbow invoke permission needs both source_arn and source_account"
-  }
-
-  assert {
-    condition     = one(aws_lambda_permission.auto_tagging).source_account == "123456789012"
-    error_message = "The auto-tagging invoke permission needs source_account"
   }
 }
 

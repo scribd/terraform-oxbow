@@ -120,7 +120,9 @@ outlives any single pipeline, so neither belongs to this module:
 
 - **The bucket notification**, if you use one. Point it at the
   `ingest_queue_arn` output; see Event delivery below for which publishers to
-  declare.
+  declare. This module creates no `aws_lambda_permission`, so if you point a
+  notification straight at a function rather than at its queue, grant the
+  invoke yourself.
 - **The lock table and the logstore table.** Pass their names as
   `dynamodb_table_name` and `logstore_dynamodb_table_name`; both are required.
   delta-rs hard-codes `key` as the lock table's partition key.

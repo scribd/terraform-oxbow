@@ -94,11 +94,6 @@ run "auto_tagging_derives_its_names_from_the_oxbow_names" {
     condition     = one(aws_iam_policy.auto_tagging).name == "test-oxbow-policy-auto_tagging"
     error_message = "Auto tagging gets its own policy, not the oxbow one"
   }
-
-  assert {
-    condition     = one(aws_lambda_permission.auto_tagging).source_arn == "arn:aws:s3:::scribdinc-data-lake-test"
-    error_message = "Only the warehouse bucket may invoke the auto tagging lambda"
-  }
 }
 
 run "glue_create_wires_athena_workgroup_queue_and_subscription" {

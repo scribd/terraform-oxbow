@@ -42,11 +42,6 @@ moved {
 }
 
 moved {
-  from = aws_lambda_permission.this_lambda_allow_bucket_permissions
-  to   = aws_lambda_permission.oxbow_from_s3[0]
-}
-
-moved {
   from = aws_sns_topic_subscription.this_sns_sub
   to   = aws_sns_topic_subscription.oxbow
 }

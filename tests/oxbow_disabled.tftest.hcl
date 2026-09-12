@@ -67,8 +67,7 @@ run "everything_off_creates_nothing_but_still_plans" {
     condition = (
       length(module.oxbow_lambda) == 0 &&
       length(module.oxbow_queue) == 0 &&
-      length(aws_iam_policy.oxbow_lambda) == 0 &&
-      length(aws_lambda_permission.oxbow_from_s3) == 0
+      length(aws_iam_policy.oxbow_lambda) == 0
     )
     error_message = "The oxbow stage must create nothing when its object is null"
   }
