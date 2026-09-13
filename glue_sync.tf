@@ -99,7 +99,7 @@ resource "aws_iam_policy" "glue_sync" {
   count = local.enabled.glue_sync ? 1 : 0
 
   name        = var.glue_sync.iam_policy_name
-  description = "Glue sync policy allows access to Glue and the warehouse prefix"
+  description = "Glue sync policy allows access to Glue and the configured prefix"
   policy      = data.aws_iam_policy_document.glue_sync[0].json
   tags        = var.tags
 }
@@ -131,14 +131,14 @@ data "aws_iam_policy_document" "glue_sync" {
     sid       = "TableExtLocS3RO"
     effect    = "Allow"
     actions   = ["s3:GetObject", "s3:GetObjectTagging", "s3:GetObjectVersion"]
-    resources = ["${local.warehouse_prefix_arn}/*"]
+    resources = ["${local.s3_prefix_arn}/*"]
   }
 
   statement {
     sid       = "TableExtLocS3List"
     effect    = "Allow"
     actions   = ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketVersions"]
-    resources = [var.warehouse_bucket_arn]
+    resources = [var.bucket_arn]
   }
 
   statement {

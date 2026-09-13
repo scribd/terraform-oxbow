@@ -1,31 +1,31 @@
 ################################################################################
-# Warehouse
+# Bucket
 ################################################################################
 
-variable "warehouse_bucket_arn" {
+variable "bucket_arn" {
   type        = string
-  description = "Warehouse bucket ARN"
+  description = "ARN of the bucket the parquet objects land in and the Delta tables are written to"
 
   validation {
-    condition     = startswith(var.warehouse_bucket_arn, "arn:") && !endswith(var.warehouse_bucket_arn, "/")
-    error_message = "warehouse_bucket_arn must be a bucket ARN with no trailing slash."
+    condition     = startswith(var.bucket_arn, "arn:") && !endswith(var.bucket_arn, "/")
+    error_message = "bucket_arn must be a bucket ARN with no trailing slash."
   }
 }
 
-variable "warehouse_bucket_account_id" {
+variable "bucket_account_id" {
   type        = string
-  description = "Account that owns the warehouse bucket; defaults to this account. S3 bucket ARNs carry no account id, so a cross-account bucket must name its owner or the SourceAccount conditions reject its events."
+  description = "Account that owns the bucket; defaults to this account. S3 bucket ARNs carry no account id, so a cross-account bucket must name its owner or the SourceAccount conditions reject its events."
   default     = null
 
   validation {
-    condition     = var.warehouse_bucket_account_id == null || can(regex("^[0-9]{12}$", var.warehouse_bucket_account_id))
-    error_message = "warehouse_bucket_account_id must be a 12-digit account id."
+    condition     = var.bucket_account_id == null || can(regex("^[0-9]{12}$", var.bucket_account_id))
+    error_message = "bucket_account_id must be a 12-digit account id."
   }
 }
 
 variable "s3_path" {
   type        = string
-  description = "Prefix within the warehouse bucket where the parquet files are stored"
+  description = "Key prefix within the bucket where the parquet files are stored"
 
   validation {
     condition     = !startswith(var.s3_path, "/") && !endswith(var.s3_path, "/")
@@ -268,7 +268,7 @@ variable "sns_delivery" {
 variable "s3_notifies_ingest_queue" {
   type        = bool
   description = <<-EOT
-    Whether the warehouse bucket delivers object-created events straight to the
+    Whether the bucket delivers object-created events straight to the
     ingest queue, i.e. an S3 notification configuration (owned by the caller)
     targets it. Independent of sns_delivery: a queue can be fed by a bucket
     notification, by a topic subscription, or by both at once. Set this false

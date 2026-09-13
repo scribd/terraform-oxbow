@@ -19,7 +19,7 @@ changes below.
 
 ## Three resources leave this module's scope
 
-The module no longer creates the warehouse bucket's notification configuration,
+The module no longer creates the bucket's notification configuration,
 the Delta lock table, or the Firehose-era parquet Glue catalog table. `moved.tf`
 carries `removed` blocks with `lifecycle { destroy = false }` for all three, so
 **OpenTofu forgets them and leaves them running in AWS** — without that, the
@@ -209,7 +209,7 @@ resource "aws_lambda_permission" "oxbow_from_s3" {
   *and* `enable_bucket_notification` admitted SNS only and S3 deliveries were
   rejected silently. The statements are now additive.
 - **`aws:SourceAccount` assumed the bucket was local.** New
-  `warehouse_bucket_account_id` names the owner when the warehouse bucket lives
+  `bucket_account_id` names the owner when the warehouse bucket lives
   in another account; it defaults to the deploying account.
 - **The lambda invoke permissions were removed entirely** — see the section
   above. They granted `s3.amazonaws.com` an invoke right no module instance
@@ -302,6 +302,7 @@ planning.
 | `enable_bucket_notification` | gone — the caller owns the bucket notification; see above |
 | `enabled_dead_letters_monitoring` + `dl_critical` + `dl_warning` + `dl_ok` + `dl_alert_recipients` + `dl_alert_message` + `tags_monitoring` + `monitoring_query_conditions` | `dead_letter_monitoring = { critical, warning?, ok?, alert_recipients?, alert_message?, tags?, query_conditions? }` |
 | `lambda_function_name` + `lambda_s3_bucket` + `lambda_s3_key` + `oxbow_lambda_role_name` + `lambda_permissions_policy_name` + `sqs_queue_name` + `sqs_queue_name_dl` | `oxbow = { lambda_function_name, lambda_s3_bucket, lambda_s3_key, role_name, policy_name, queue_name, dl_queue_name }` |
+| `warehouse_bucket_arn` / `warehouse_bucket_account_id` | `bucket_arn` / `bucket_account_id` — the module is generic; "warehouse" came from the retired terraform-data-warehouse lineage and described one consumer's bucket out of three |
 | the oxbow lambda was always created | `oxbow` is now nullable like every other stage; leave it set to keep today's behaviour |
 | `sns_topic_arn = ""` meant "no topic" | `sns_delivery = { topic_arn, filter_policy?, filter_policy_scope? }`, or null |
 
@@ -332,7 +333,7 @@ Other input changes:
 - `warehouse_bucket_name` is **removed**. Its only consumer was the bucket
   notification this module no longer owns; nothing else referenced it. Drop it
   from your module block.
-- `warehouse_bucket_account_id`, `manage_lambda_log_groups`,
+- `bucket_account_id`, `manage_lambda_log_groups`,
   `cloudwatch_logs_retention_in_days`, `sqs_managed_sse_enabled` and
   `s3_notifies_ingest_queue` are new.
 - `auto_tagging` gains optional `function_name` / `role_name` / `policy_name` /

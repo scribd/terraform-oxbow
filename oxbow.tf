@@ -1,4 +1,4 @@
-# Oxbow converts parquet objects landing in the warehouse bucket into Delta
+# Oxbow converts parquet objects landing in the bucket into Delta
 # tables. S3 (directly, or fanned out through SNS) notifies a queue; the queue
 # drives the lambda.
 
@@ -95,7 +95,7 @@ resource "aws_iam_policy" "oxbow_lambda" {
   count = local.enabled.oxbow ? 1 : 0
 
   name        = var.oxbow.policy_name
-  description = "Oxbow lambda access to the warehouse prefix, its queues and the Delta lock tables"
+  description = "Oxbow lambda access to the configured prefix, its queues and the Delta lock tables"
   policy      = data.aws_iam_policy_document.oxbow_lambda[0].json
   tags        = var.tags
 }
@@ -122,14 +122,14 @@ data "aws_iam_policy_document" "oxbow_lambda" {
       "s3:DeleteObject",
       "s3:DeleteObjectTagging",
     ]
-    resources = ["${local.warehouse_prefix_arn}/*"]
+    resources = ["${local.s3_prefix_arn}/*"]
   }
 
   statement {
     sid       = "WarehouseBucketList"
     effect    = "Allow"
     actions   = ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketVersions"]
-    resources = [var.warehouse_bucket_arn]
+    resources = [var.bucket_arn]
   }
 
   statement {

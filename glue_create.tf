@@ -135,7 +135,7 @@ resource "aws_iam_policy" "glue_create" {
   count = local.enabled.glue_create ? 1 : 0
 
   name        = var.glue_create.iam_policy_name
-  description = "Glue create policy allows access to Athena, Glue and the warehouse prefix"
+  description = "Glue create policy allows access to Athena, Glue and the configured prefix"
   policy      = data.aws_iam_policy_document.glue_create[0].json
   tags        = var.tags
 }
@@ -204,14 +204,14 @@ data "aws_iam_policy_document" "glue_create" {
     sid       = "TableExtLocS3RO"
     effect    = "Allow"
     actions   = ["s3:GetObject", "s3:GetObjectTagging", "s3:GetObjectVersion"]
-    resources = ["${local.warehouse_prefix_arn}/*"]
+    resources = ["${local.s3_prefix_arn}/*"]
   }
 
   statement {
     sid       = "TableExtLocS3List"
     effect    = "Allow"
     actions   = ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketVersions"]
-    resources = [var.warehouse_bucket_arn]
+    resources = [var.bucket_arn]
   }
 
   statement {

@@ -42,8 +42,8 @@ resource "aws_dynamodb_table" "delta_logstore" {
 module "oxbow" {
   source = "../../"
 
-  warehouse_bucket_arn = "arn:aws:s3:::${local.warehouse_bucket}"
-  s3_path              = local.s3_path
+  bucket_arn = "arn:aws:s3:::${local.bucket}"
+  s3_path    = local.s3_path
 
   oxbow = {
     lambda_function_name = local.prefix
@@ -68,7 +68,7 @@ module "oxbow" {
 # S3 permits one notification configuration per bucket, so it belongs to
 # whoever owns the bucket rather than to the module.
 resource "aws_s3_bucket_notification" "warehouse" {
-  bucket = local.warehouse_bucket
+  bucket = local.bucket
 
   queue {
     queue_arn     = module.oxbow.ingest_queue_arn

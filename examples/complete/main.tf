@@ -42,8 +42,8 @@ resource "aws_dynamodb_table" "delta_logstore" {
 module "oxbow" {
   source = "../../"
 
-  warehouse_bucket_arn = "arn:aws:s3:::${local.warehouse_bucket}"
-  s3_path              = local.s3_path
+  bucket_arn = "arn:aws:s3:::${local.bucket}"
+  s3_path    = local.s3_path
 
   oxbow = {
     lambda_function_name = local.prefix

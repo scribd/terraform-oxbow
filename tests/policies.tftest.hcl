@@ -37,8 +37,8 @@ mock_provider "aws" {
 mock_provider "datadog" {}
 
 variables {
-  warehouse_bucket_arn = "arn:aws:s3:::scribdinc-data-lake-test"
-  s3_path              = "catalogs/bronze_monolith"
+  bucket_arn = "arn:aws:s3:::scribdinc-data-lake-test"
+  s3_path    = "catalogs/bronze_monolith"
 
 
   rust_log_deltalake_debug_level = "info"
@@ -75,9 +75,9 @@ run "trailing_slash_on_s3_path_is_rejected" {
 run "bucket_arn_must_be_an_arn" {
   command = plan
   variables {
-    warehouse_bucket_arn = "scribdinc-data-lake-test"
+    bucket_arn = "scribdinc-data-lake-test"
   }
-  expect_failures = [var.warehouse_bucket_arn]
+  expect_failures = [var.bucket_arn]
 }
 
 run "unknown_architecture_is_rejected" {
@@ -91,9 +91,9 @@ run "unknown_architecture_is_rejected" {
 run "non_numeric_account_id_is_rejected" {
   command = plan
   variables {
-    warehouse_bucket_account_id = "not-an-account"
+    bucket_account_id = "not-an-account"
   }
-  expect_failures = [var.warehouse_bucket_account_id]
+  expect_failures = [var.bucket_account_id]
 }
 
 run "invalid_filter_policy_scope_is_rejected" {
@@ -222,12 +222,12 @@ run "names_at_the_limit_are_accepted" {
 ################################################################################
 
 # aws:SourceAccount was hardcoded to the deploying account, which rejects every
-# event from a warehouse bucket owned by another account.
-run "cross_account_warehouse_bucket_is_supported" {
+# event from a bucket owned by another account.
+run "cross_account_bucket_is_supported" {
   command = plan
 
   variables {
-    warehouse_bucket_account_id = "210987654321"
+    bucket_account_id = "210987654321"
   }
 
   assert {
@@ -239,11 +239,11 @@ run "cross_account_warehouse_bucket_is_supported" {
   }
 }
 
-run "warehouse_bucket_account_defaults_to_this_account" {
+run "bucket_account_defaults_to_this_account" {
   command = plan
 
   assert {
-    condition     = local.warehouse_bucket_account_id == "123456789012"
+    condition     = local.bucket_account_id == "123456789012"
     error_message = "Omitting the variable must keep the current account"
   }
 }

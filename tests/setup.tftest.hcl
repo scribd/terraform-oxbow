@@ -37,8 +37,8 @@ mock_provider "aws" {
 mock_provider "datadog" {}
 
 variables {
-  warehouse_bucket_arn = "arn:aws:s3:::scribdinc-data-lake-test"
-  s3_path              = "catalogs/bronze_monolith"
+  bucket_arn = "arn:aws:s3:::scribdinc-data-lake-test"
+  s3_path    = "catalogs/bronze_monolith"
 
 
   rust_log_deltalake_debug_level = "info"

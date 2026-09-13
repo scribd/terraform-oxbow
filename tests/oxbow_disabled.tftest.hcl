@@ -37,8 +37,8 @@ mock_provider "aws" {
 mock_provider "datadog" {}
 
 variables {
-  warehouse_bucket_arn = "arn:aws:s3:::scribdinc-data-lake-test"
-  s3_path              = "catalogs/bronze_monolith"
+  bucket_arn = "arn:aws:s3:::scribdinc-data-lake-test"
+  s3_path    = "catalogs/bronze_monolith"
 
 
   rust_log_deltalake_debug_level = "info"
@@ -52,7 +52,7 @@ variables {
 }
 
 # oxbow = null turns the core stage off, so the module can deploy the auxiliary
-# stages on their own against a warehouse whose Delta tables something else
+# stages on their own against a bucket whose Delta tables something else
 # writes.
 
 run "everything_off_creates_nothing_but_still_plans" {

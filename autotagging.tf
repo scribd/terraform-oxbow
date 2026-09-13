@@ -87,7 +87,7 @@ resource "aws_iam_policy" "auto_tagging" {
   count = local.enabled.auto_tagging ? 1 : 0
 
   name        = local.auto_tagging_policy
-  description = "Auto-tagging lambda access to the warehouse prefix, its queue and the Delta lock tables"
+  description = "Auto-tagging lambda access to the configured prefix, its queue and the Delta lock tables"
   policy      = data.aws_iam_policy_document.auto_tagging[0].json
   tags        = var.tags
 }
@@ -114,14 +114,14 @@ data "aws_iam_policy_document" "auto_tagging" {
       "s3:DeleteObject",
       "s3:DeleteObjectTagging",
     ]
-    resources = ["${local.warehouse_prefix_arn}/*"]
+    resources = ["${local.s3_prefix_arn}/*"]
   }
 
   statement {
     sid       = "WarehouseBucketList"
     effect    = "Allow"
     actions   = ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketVersions"]
-    resources = [var.warehouse_bucket_arn]
+    resources = [var.bucket_arn]
   }
 
   statement {

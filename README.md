@@ -64,7 +64,7 @@ something else writes.
 module "oxbow" {
   source = "github.com/scribd/terraform-oxbow?ref=v2.0.0"
 
-  warehouse_bucket_arn = module.warehouse.s3_bucket_arn
+  bucket_arn = module.warehouse.s3_bucket_arn
   s3_path              = "catalogs/bronze_monolith"
 
   oxbow = {
@@ -128,9 +128,9 @@ outlives any single pipeline, so neither belongs to this module:
   `dynamodb_table_name` and `logstore_dynamodb_table_name`; both are required.
   delta-rs hard-codes `key` as the lock table's partition key.
 
-Of the bucket, the module needs only what its policies reference:
-`warehouse_bucket_arn` and `s3_path` scope the object grants to
-`<bucket>/<s3_path>/*`, and `warehouse_bucket_account_id` fills the
+The module needs only what its policies reference: `bucket_arn` and
+`s3_path` scope the object grants to
+`<bucket_arn>/<s3_path>/*`, and `bucket_account_id` fills the
 `aws:SourceAccount` conditions when the bucket lives in another account.
 Bucket-level listing (`s3:ListBucket`) is still granted on the bucket rather
 than the prefix — see the declined findings in UPGRADING.md.
@@ -195,7 +195,7 @@ creates them.
 
 ## Required inputs
 
-Always: `warehouse_bucket_arn`, `s3_path`, `rust_log_oxbow_debug_level`.
+Always: `bucket_arn`, `s3_path`, `rust_log_oxbow_debug_level`.
 
 Required only when the stage that consumes them is on — a glue-only deployment
 leaves all four unset:
@@ -223,7 +223,7 @@ default:
 | `sqs_redrive_policy_maxReceiveCount` | `10` | receives before a message dead-letters |
 | `message_retention_seconds` | `1209600` | every queue this module creates |
 | `sqs_managed_sse_enabled` | `true` | SSE-SQS needs no KMS grants |
-| `warehouse_bucket_account_id` | `null` | defaults to the current account |
+| `bucket_account_id` | `null` | defaults to the current account |
 | `s3_notifies_ingest_queue` | `true` | see Event delivery |
 | `tags` | `{}` | every AWS resource this module creates |
 

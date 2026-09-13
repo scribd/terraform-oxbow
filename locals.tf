@@ -21,9 +21,9 @@ locals {
 
   sns_topic_arn = try(var.sns_delivery.topic_arn, null)
 
-  # S3 bucket ARNs carry no account id, so a cross-account warehouse bucket has
-  # to name its owner explicitly or the SourceAccount conditions reject it.
-  warehouse_bucket_account_id = coalesce(var.warehouse_bucket_account_id, local.account_id)
+  # S3 bucket ARNs carry no account id, so a cross-account bucket has to name
+  # its owner explicitly or the SourceAccount conditions reject it.
+  bucket_account_id = coalesce(var.bucket_account_id, local.account_id)
 
   # Oxbow reads from the FIFO queue the group-events lambda feeds, or straight
   # from the standard queue when grouping is off. The queue S3 (or SNS)
@@ -52,7 +52,7 @@ locals {
   auto_tagging_queue_name = local.enabled.auto_tagging ? coalesce(var.auto_tagging.queue_name, local.enabled.oxbow ? "${var.oxbow.queue_name}${local.auto_tagging_suffix}" : null) : null
   auto_tagging_dlq_name   = local.enabled.auto_tagging ? coalesce(var.auto_tagging.dl_queue_name, "${local.auto_tagging_queue_name}-dl") : null
 
-  warehouse_prefix_arn = "${var.warehouse_bucket_arn}/${var.s3_path}"
+  s3_prefix_arn = "${var.bucket_arn}/${var.s3_path}"
 
   dynamodb_table_arn_prefix = "arn:${local.partition}:dynamodb:${local.region}:${local.account_id}:table"
   lock_table_arn            = "${local.dynamodb_table_arn_prefix}/${var.dynamodb_table_name}"
@@ -99,12 +99,12 @@ locals {
       {
         test     = "ArnEquals"
         variable = "aws:SourceArn"
-        values   = [var.warehouse_bucket_arn]
+        values   = [var.bucket_arn]
       },
       {
         test     = "StringEquals"
         variable = "aws:SourceAccount"
-        values   = [local.warehouse_bucket_account_id]
+        values   = [local.bucket_account_id]
       },
     ]
   }
