@@ -43,14 +43,10 @@ module "oxbow" {
     tags             = ["env:${local.env}", "service:oxbow-glue"]
   }
 
+  # The glue lambdas read this; the Delta-log level, the locking provider and
+  # both lock tables belong to stages this deployment does not run, so they stay
+  # unset.
   rust_log_oxbow_debug_level = "info"
-
-  # Required by the module's interface but unused here: nothing in this
-  # deployment reads the Delta log or takes a lock. See the README note.
-  rust_log_deltalake_debug_level = "info"
-  aws_s3_locking_provider        = "dynamodb"
-  dynamodb_table_name            = "unused-by-this-deployment"
-  logstore_dynamodb_table_name   = "unused-by-this-deployment"
 
   tags = local.tags
 }

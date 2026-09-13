@@ -195,10 +195,18 @@ creates them.
 
 ## Required inputs
 
-`warehouse_bucket_arn`, `s3_path`, `dynamodb_table_name`,
-`logstore_dynamodb_table_name`, `aws_s3_locking_provider`,
-`rust_log_deltalake_debug_level` and `rust_log_oxbow_debug_level`. Everything
-else is a stage object (null-gated, above) or a tunable with a default:
+Always: `warehouse_bucket_arn`, `s3_path`, `rust_log_oxbow_debug_level`.
+
+Required only when the stage that consumes them is on — a glue-only deployment
+leaves all four unset:
+
+| Input | Required when |
+| --- | --- |
+| `dynamodb_table_name`, `logstore_dynamodb_table_name` | `oxbow` or `auto_tagging` is set |
+| `aws_s3_locking_provider`, `rust_log_deltalake_debug_level` | `oxbow` is set |
+
+Everything else is a stage object (null-gated, above) or a tunable with a
+default:
 
 | Variable | Default | |
 | --- | --- | --- |
@@ -208,7 +216,7 @@ else is a stage object (null-gated, above) or a tunable with a default:
 | `lambda_reserved_concurrent_executions` | `1` | oxbow and auto-tagging |
 | `architectures` | `["x86_64"]` | or `["arm64"]` |
 | `enable_schema_evolution` | `true` | sets `SCHEMA_EVOLUTION` on oxbow |
-| `manage_lambda_log_groups` | `true` | see below |
+| `manage_lambda_log_groups` | `false` | see below |
 | `cloudwatch_logs_retention_in_days` | `null` | null keeps logs forever |
 | `sqs_visibility_timeout_seconds` | `120` | primary queues; DLQs stay at 30 |
 | `sqs_delay_seconds` | `180` | primary queues; DLQs stay at 0 |
@@ -221,11 +229,14 @@ else is a stage object (null-gated, above) or a tunable with a default:
 
 ## Lambda log groups
 
-`manage_lambda_log_groups` (default `true`) has each lambda's CloudWatch log
-group created by OpenTofu, which is what lets the logs IAM policy be scoped to
-that one group instead of `*`. A deployment whose log groups already exist —
-created implicitly by the Lambda service on first invocation — must either set
-it to `false` or import them; see [UPGRADING.md](UPGRADING.md).
+`manage_lambda_log_groups` has each lambda's CloudWatch log group created by
+OpenTofu, which is what lets the logs IAM policy be scoped to that one group
+instead of `*`. It defaults to **`false`** because a log group the Lambda
+service already created cannot be created again — `true` on an existing
+deployment fails mid-apply with `ResourceAlreadyExistsException`. Set it `true`
+on a new deployment, or after importing the groups; see
+[UPGRADING.md](UPGRADING.md). With `false` the module reads each group with a
+data source, which fails at plan if it does not exist yet.
 
 ## Examples
 

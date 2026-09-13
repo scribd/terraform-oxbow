@@ -99,8 +99,9 @@ module "oxbow_fifo_queue" {
 
   create_dlq = true
   dlq_name   = local.fifo_dlq_name
-  # The sqs module coalesces these from the primary queue; pin them so the DLQ
-  # keeps the values it has today.
+  # The sqs module coalesces these from the primary queue, which would flip the
+  # live DLQ's dedup flag. Not covered by tofu test: assertions cannot reach a
+  # child module's resources.
   dlq_content_based_deduplication = false
   dlq_delay_seconds               = 0
   dlq_visibility_timeout_seconds  = 30

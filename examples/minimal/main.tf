@@ -1,7 +1,5 @@
 # Oxbow on its own, fed by a bucket notification the caller owns.
 
-data "aws_caller_identity" "current" {}
-
 # Both lock tables belong to the caller: they outlive any one pipeline, and
 # delta-rs hard-codes "key" as the lock table's partition key.
 resource "aws_dynamodb_table" "oxbow_locking" {
@@ -78,4 +76,8 @@ resource "aws_s3_bucket_notification" "warehouse" {
     filter_prefix = "${local.s3_path}/"
     filter_suffix = ".parquet"
   }
+
+  # ingest_queue_arn resolves from the queue, not its policy, so without this
+  # S3 can reject the destination it cannot yet write to.
+  depends_on = [module.oxbow]
 }

@@ -27,12 +27,3 @@ Every example that runs oxbow declares the two DynamoDB tables itself, and
 S3 permits one notification configuration per bucket, and the lock tables
 outlive any one pipeline. Copy those resources rather than expecting the module
 to make them.
-
-## Known friction
-
-`glue-only` has to pass `rust_log_deltalake_debug_level`,
-`aws_s3_locking_provider`, `dynamodb_table_name` and
-`logstore_dynamodb_table_name` even though nothing in that deployment reads a
-Delta log or takes a lock — they are required inputs that only the oxbow and
-auto-tagging stages consume. Moving them onto the stage objects that use them
-would fix it.

@@ -14,7 +14,10 @@ jobs:
     name: fmt, validate, test
     runs-on: ubuntu-latest
     steps:
+      # check-moved-blocks.py diffs against main, so it needs the base branch.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: opentofu/setup-opentofu@v2
         with:
@@ -28,6 +31,10 @@ jobs:
 
       # The suite mocks both providers, so it needs no AWS or Datadog credentials.
       - run: tofu test
+
+      # State moves only manifest against real prior state, so tofu test cannot
+      # reach them.
+      - run: python3 scripts/check-moved-blocks.py
 
   examples:
     name: validate examples

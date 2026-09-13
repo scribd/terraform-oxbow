@@ -145,7 +145,7 @@ data "aws_iam_policy_document" "oxbow_lambda" {
     content {
       sid       = "ProduceToFifoQueue"
       effect    = "Allow"
-      actions   = ["sqs:SendMessage", "sqs:GetQueueUrl", "sqs:GetQueueAttributes"]
+      actions   = ["sqs:SendMessage"]
       resources = [module.oxbow_fifo_queue[0].queue_arn]
     }
   }

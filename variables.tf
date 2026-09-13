@@ -95,7 +95,13 @@ variable "architectures" {
 
 variable "rust_log_deltalake_debug_level" {
   type        = string
-  description = "RUST_LOG level for the deltalake crate"
+  description = "RUST_LOG level for the deltalake crate; required when the oxbow stage is on"
+  default     = null
+
+  validation {
+    condition     = var.oxbow == null || var.rust_log_deltalake_debug_level != null
+    error_message = "rust_log_deltalake_debug_level is required when the oxbow stage is on."
+  }
 }
 
 variable "rust_log_oxbow_debug_level" {
@@ -105,7 +111,13 @@ variable "rust_log_oxbow_debug_level" {
 
 variable "aws_s3_locking_provider" {
   type        = string
-  description = "Value of AWS_S3_LOCKING_PROVIDER for the oxbow lambda"
+  description = "Value of AWS_S3_LOCKING_PROVIDER for the oxbow lambda; required when the oxbow stage is on"
+  default     = null
+
+  validation {
+    condition     = var.oxbow == null || var.aws_s3_locking_provider != null
+    error_message = "aws_s3_locking_provider is required when the oxbow stage is on."
+  }
 }
 
 variable "enable_schema_evolution" {
@@ -117,12 +129,15 @@ variable "enable_schema_evolution" {
 variable "manage_lambda_log_groups" {
   type        = bool
   description = <<-EOT
-    Manage each lambda's CloudWatch log group with OpenTofu. Leave true for new
-    deployments. Existing deployments whose log groups were created implicitly by
-    the Lambda service must either set this to false or import the log groups
-    first -- see UPGRADING.md.
+    Manage each lambda's CloudWatch log group with OpenTofu, which is what lets
+    the logs policy be scoped to that one group. Defaults false because a log
+    group the Lambda service already created cannot be created again: on an
+    existing deployment true fails mid-apply with ResourceAlreadyExistsException.
+    Set it true on a new deployment, or after importing the groups -- with false
+    the module reads each group with a data source, which fails at plan if it
+    does not exist yet.
   EOT
-  default     = true
+  default     = false
 }
 
 variable "cloudwatch_logs_retention_in_days" {
@@ -135,26 +150,38 @@ variable "cloudwatch_logs_retention_in_days" {
 # Lock tables
 ################################################################################
 
-# Neither table is created here. Both must exist before the lambdas run, and
-# both names are interpolated into IAM resource ARNs, so an empty one yields a
-# malformed policy that fails at apply.
+# Neither table is created here; both must exist before the lambdas run. Only
+# the oxbow and auto-tagging stages touch them, so a deployment running neither
+# leaves them null rather than inventing a name.
 variable "dynamodb_table_name" {
   type        = string
-  description = "Name of the existing delta-rs S3 locking table (DYNAMO_LOCK_TABLE_NAME)"
+  description = "Name of the existing delta-rs S3 locking table (DYNAMO_LOCK_TABLE_NAME); required when the oxbow or auto_tagging stage is on"
+  default     = null
 
   validation {
-    condition     = can(regex("^[A-Za-z0-9_.-]{3,255}$", var.dynamodb_table_name))
+    condition     = var.dynamodb_table_name == null || can(regex("^[A-Za-z0-9_.-]{3,255}$", var.dynamodb_table_name))
     error_message = "dynamodb_table_name must be a valid DynamoDB table name (3-255 chars)."
+  }
+
+  validation {
+    condition     = (var.oxbow == null && var.auto_tagging == null) || var.dynamodb_table_name != null
+    error_message = "dynamodb_table_name is required when the oxbow or auto_tagging stage is on."
   }
 }
 
 variable "logstore_dynamodb_table_name" {
   type        = string
-  description = "Name of the existing delta logstore table (DELTA_DYNAMO_TABLE_NAME)"
+  description = "Name of the existing delta logstore table (DELTA_DYNAMO_TABLE_NAME); required when the oxbow or auto_tagging stage is on"
+  default     = null
 
   validation {
-    condition     = can(regex("^[A-Za-z0-9_.-]{3,255}$", var.logstore_dynamodb_table_name))
+    condition     = var.logstore_dynamodb_table_name == null || can(regex("^[A-Za-z0-9_.-]{3,255}$", var.logstore_dynamodb_table_name))
     error_message = "logstore_dynamodb_table_name must be a valid DynamoDB table name (3-255 chars)."
+  }
+
+  validation {
+    condition     = (var.oxbow == null && var.auto_tagging == null) || var.logstore_dynamodb_table_name != null
+    error_message = "logstore_dynamodb_table_name is required when the oxbow or auto_tagging stage is on."
   }
 }
 
@@ -360,6 +387,11 @@ variable "glue_create" {
   }
 
   validation {
+    condition     = var.glue_create == null || startswith(var.glue_create.sns_topic_arn, "arn:")
+    error_message = "glue_create.sns_topic_arn must be a topic ARN."
+  }
+
+  validation {
     condition     = var.glue_create == null || var.glue_create.filter_policy == null || can(jsondecode(var.glue_create.filter_policy))
     error_message = "glue_create.filter_policy must be valid JSON."
   }
@@ -391,6 +423,11 @@ variable "glue_sync" {
   })
   description = "Keep existing Glue catalog tables in step with the Delta tables oxbow writes"
   default     = null
+
+  validation {
+    condition     = var.glue_sync == null || startswith(var.glue_sync.sns_topic_arn, "arn:")
+    error_message = "glue_sync.sns_topic_arn must be a topic ARN."
+  }
 
   validation {
     condition     = var.glue_sync == null || var.glue_sync.filter_policy == null || can(jsondecode(var.glue_sync.filter_policy))

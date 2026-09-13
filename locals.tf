@@ -79,13 +79,13 @@ locals {
     "arn:${local.partition}:glue:${local.region}:${local.account_id}:table/*",
   ]
 
-  # The five actions a lambda's event source mapping poller needs on its queue.
+  # Exactly AWSLambdaSQSQueueExecutionRole's SQS half. ChangeMessageVisibility
+  # would only be needed for partial batch responses, which no event source
+  # mapping here enables.
   sqs_consumer_actions = [
     "sqs:ReceiveMessage",
     "sqs:DeleteMessage",
     "sqs:GetQueueAttributes",
-    "sqs:GetQueueUrl",
-    "sqs:ChangeMessageVisibility",
   ]
 
   # Publishers of the object-created events, as reusable statements. Each queue
@@ -123,7 +123,7 @@ locals {
   # The two delivery paths are independent, and this module owns neither the
   # bucket notification nor the topic, so each is declared rather than inferred.
   # Both can be live at once.
-  ingest_queue_policy_statements = merge(
+  ingest_queue_publishers = merge(
     var.s3_notifies_ingest_queue ? { s3_send = local.s3_send_statement } : {},
     local.enabled.sns_delivery ? { sns_send = local.sns_send_statement } : {},
   )
@@ -131,9 +131,23 @@ locals {
   # A caller's bucket notification normally targets the ingest queue, so the
   # auto-tagging queue gets an S3 grant only when the caller says one points at
   # it instead.
-  auto_tagging_queue_policy_statements = merge(
+  auto_tagging_queue_publishers = merge(
     local.enabled.auto_tagging && var.auto_tagging.s3_notifies_queue ? { s3_send = local.s3_send_statement } : {},
     local.enabled.sns_delivery ? { sns_send = local.sns_send_statement } : {},
+  )
+
+  # A queue with no cross-service publisher still needs a policy with at least
+  # one statement: a zero-statement document renders as {"Version": ...} with no
+  # Statement key, which SetQueueAttributes rejects as MalformedPolicyDocument.
+  # The same-account deny is the right content for such a queue anyway.
+  ingest_queue_policy_statements = merge(
+    local.ingest_queue_publishers,
+    { for k, v in local.same_account_only_statements : k => v if length(local.ingest_queue_publishers) == 0 },
+  )
+
+  auto_tagging_queue_policy_statements = merge(
+    local.auto_tagging_queue_publishers,
+    { for k, v in local.same_account_only_statements : k => v if length(local.auto_tagging_queue_publishers) == 0 },
   )
 
   log_group_arn = "arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group"

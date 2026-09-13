@@ -459,8 +459,15 @@ run "auto_tagging_queue_has_no_unexercised_s3_grant" {
   }
 
   assert {
-    condition     = length(keys(local.auto_tagging_queue_policy_statements)) == 0
-    error_message = "Nothing publishes to the auto-tagging queue here, so it needs no resource policy"
+    condition     = length(keys(local.auto_tagging_queue_publishers)) == 0
+    error_message = "Nothing publishes to the auto-tagging queue here, so it gets no publisher grant"
+  }
+
+  # It still needs a policy with at least one statement: a zero-statement
+  # document omits the Statement key entirely and SQS rejects it.
+  assert {
+    condition     = keys(local.auto_tagging_queue_policy_statements) == ["deny_outside_account"]
+    error_message = "A publisher-less queue must fall back to the same-account deny, not an empty policy"
   }
 
   assert {
@@ -481,7 +488,7 @@ run "auto_tagging_queue_admits_s3_when_the_caller_wires_it" {
   }
 
   assert {
-    condition     = keys(local.auto_tagging_queue_policy_statements) == ["s3_send"]
+    condition     = keys(local.auto_tagging_queue_publishers) == ["s3_send"]
     error_message = "Opting in must grant S3 on the auto-tagging queue"
   }
 }
@@ -606,5 +613,36 @@ run "s3_grant_is_scoped_identically_on_both_shapes" {
   assert {
     condition     = local.ingest_queue_policy_statements["sns_send"].condition[0].values == ["arn:aws:sns:us-east-2:123456789012:warehouse-events"]
     error_message = "The SNS grant stays scoped to the configured topic"
+  }
+}
+
+# A zero-statement aws_iam_policy_document renders as {"Version": "2012-10-17"}
+# with no Statement key, which SetQueueAttributes rejects with
+# MalformedPolicyDocument. Every queue this module gives a policy to must
+# therefore end up with at least one statement.
+run "no_queue_ever_gets_an_empty_policy" {
+  command = plan
+
+  variables {
+    s3_notifies_ingest_queue = false
+    auto_tagging = {
+      lambda_s3_bucket = "test-artifacts"
+      lambda_s3_key    = "auto-tagging/auto-tagging.zip"
+    }
+  }
+
+  assert {
+    condition     = length(local.ingest_queue_publishers) == 0 && length(local.auto_tagging_queue_publishers) == 0
+    error_message = "This case is only meaningful when neither queue has a publisher"
+  }
+
+  assert {
+    condition     = length(local.ingest_queue_policy_statements) > 0
+    error_message = "The ingest queue policy would render without a Statement key"
+  }
+
+  assert {
+    condition     = length(local.auto_tagging_queue_policy_statements) > 0
+    error_message = "The auto-tagging queue policy would render without a Statement key"
   }
 }

@@ -3,9 +3,9 @@
 The module now builds its lambdas, queues and buckets from the published
 `terraform-aws-modules` modules instead of raw resources. Every existing
 resource keeps its identity: `moved.tf` relocates each one into its new address,
-so **no queue, lambda or IAM role is destroyed or recreated**. Two resources
+so **no queue, lambda or IAM role is destroyed or recreated**. Three resources
 leave the module's scope entirely and are handed back to the caller rather than
-destroyed — see the next section.
+destroyed, and two unused invoke permissions are deleted — see below.
 
 It is still not a no-op plan. Read the plan before applying, and expect the
 changes below.
@@ -17,17 +17,18 @@ changes below.
   previous version of this module used.
 - Do not commit `.terraform.lock.hcl`.
 
-## Two resources leave this module's scope
+## Three resources leave this module's scope
 
-The module no longer creates the warehouse bucket's notification configuration
-or the Delta lock table. `moved.tf` carries `removed` blocks with
-`lifecycle { destroy = false }` for both, so **OpenTofu forgets them and leaves
-them running in AWS** — without that, the upgrade would wipe a live bucket's
-entire notification configuration and delete the lock table holding Delta
-concurrency state.
+The module no longer creates the warehouse bucket's notification configuration,
+the Delta lock table, or the Firehose-era parquet Glue catalog table. `moved.tf`
+carries `removed` blocks with `lifecycle { destroy = false }` for all three, so
+**OpenTofu forgets them and leaves them running in AWS** — without that, the
+upgrade would wipe a live bucket's entire notification configuration and delete
+the lock table holding Delta concurrency state.
 
-You must adopt both in the calling configuration, or they become unmanaged
-drift:
+Adopt the first two in the calling configuration or they become unmanaged drift.
+The Glue catalog table needs nothing: every consumer had it switched off, so
+there is nothing in state to adopt.
 
 ```hcl
 # The lock table: delta-rs hard-codes "key" as the partition key.
@@ -59,6 +60,10 @@ resource "aws_s3_bucket_notification" "warehouse" {
     filter_suffix = ".parquet"
     filter_prefix = "catalogs/bronze_monolith/"
   }
+
+  # ingest_queue_arn resolves from the queue, not its policy, so without this
+  # S3 can reject a destination it cannot yet write to.
+  depends_on = [module.oxbow]
 }
 ```
 
@@ -69,9 +74,11 @@ tofu import aws_dynamodb_table.oxbow_locking <table-name>
 tofu import aws_s3_bucket_notification.warehouse <bucket-name>
 ```
 
-`dynamodb_table_name` and `logstore_dynamodb_table_name` are now **required** —
-both are interpolated into IAM resource ARNs, and the old `""` defaults produced
-a malformed policy that failed at apply. `enable_bucket_notification` /
+`dynamodb_table_name` and `logstore_dynamodb_table_name` are required whenever
+the `oxbow` or `auto_tagging` stage is on — they are interpolated into IAM
+resource ARNs, and the old `""` defaults produced a malformed policy that failed
+at apply. A deployment running neither stage leaves them unset.
+`enable_bucket_notification` /
 `bucket_notification` are gone. The two delivery paths are now declared
 independently: `s3_notifies_ingest_queue` (default `true`) and `sns_delivery`.
 A topic-only deployment should set the former `false`; a deployment fed by both
@@ -79,17 +86,18 @@ needs no change.
 
 ## One manual decision: lambda log groups
 
-The lambda module manages each function's CloudWatch log group, which is what
+The lambda module can manage each function's CloudWatch log group, which is what
 lets the logs IAM policy be scoped to that one group instead of `Resource: "*"`.
 Your log groups already exist — the Lambda service created them on first
-invocation — and creating an existing log group fails the apply.
+invocation — and creating an existing log group fails the apply, so
+`manage_lambda_log_groups` defaults to `false`.
 
 Pick one:
 
-**A. Keep them unmanaged** (smallest diff):
+**A. Keep them unmanaged** (the default, and the smallest diff):
 
 ```hcl
-manage_lambda_log_groups = false
+manage_lambda_log_groups = false   # this is now the default; nothing to set
 ```
 
 The module reads each group with a data source instead. The scoped logs policy
@@ -98,13 +106,14 @@ still applies.
 **B. Import them** (gets you managed retention):
 
 ```
-tofu import 'module.oxbow.module.oxbow_lambda.aws_cloudwatch_log_group.lambda[0]' /aws/lambda/<lambda_function_name>
+tofu import 'module.oxbow.module.oxbow_lambda[0].aws_cloudwatch_log_group.lambda[0]' /aws/lambda/<oxbow.lambda_function_name>
 ```
 
 and once per enabled stage, substituting the module name and function name:
-`group_events_lambda`, `auto_tagging_lambda`, `glue_create_lambda`,
-`glue_sync_lambda`. Then set `cloudwatch_logs_retention_in_days` if you want a
-retention other than "forever".
+`group_events_lambda[0]`, `auto_tagging_lambda[0]`, `glue_create_lambda[0]`,
+`glue_sync_lambda[0]` — every stage module is counted, so the index is
+required. Then set `manage_lambda_log_groups = true` and, if you want a
+retention other than "forever", `cloudwatch_logs_retention_in_days`.
 
 ## What the plan will add
 
@@ -122,14 +131,15 @@ as inline attributes or did not have at all.
 - `aws_iam_role_policy` carrying the scoped CloudWatch Logs grant.
 - `terraform_data.name_length_guard`, which holds the plan-time name length
   checks.
-- With `enable_auto_tagging` and `enabled_dead_letters_monitoring` both on, one
-  new Datadog monitor: the auto-tagging DLQ was previously unmonitored.
+- With `auto_tagging` and `dead_letter_monitoring` both set, one new Datadog
+  monitor: the auto-tagging DLQ was previously unmonitored.
 
 ## What the plan will change in place
 
 - **IAM policies are rewritten to least privilege.** `dynamodb:*` becomes the six
-  item-level actions delta-rs calls, `sqs:*` becomes the five consumer actions
-  (plus `sqs:SendMessage` on the FIFO queue for the group-events lambda), object
+  item-level actions delta-rs calls, `sqs:*` becomes the three actions in
+  `AWSLambdaSQSQueueExecutionRole` (plus `sqs:SendMessage` on the FIFO queue for
+  the group-events lambda), object
   permissions drop from the whole bucket to `<s3_path>/*` with bucket-level
   listing kept separate, and CloudWatch Logs drops from `Resource: "*"` to the
   function's own log group.
@@ -201,11 +211,9 @@ resource "aws_lambda_permission" "oxbow_from_s3" {
 - **`aws:SourceAccount` assumed the bucket was local.** New
   `warehouse_bucket_account_id` names the owner when the warehouse bucket lives
   in another account; it defaults to the deploying account.
-- **The lambda invoke permissions had no `source_account`.** S3 bucket names are
-  global, so a same-named bucket in another account could invoke the functions.
-  Neither lambda is invoked by S3 *within* this module — both are driven by an
-  event source mapping — but the permissions are kept for consumers who wire a
-  bucket straight at the function.
+- **The lambda invoke permissions were removed entirely** — see the section
+  above. They granted `s3.amazonaws.com` an invoke right no module instance
+  uses.
 - **A half-configured stage is now impossible.** The old `enable_*` booleans
   were independent of the config they needed, so enabling a stage without
   filling it in surfaced partway through an apply as provider errors naming
@@ -220,10 +228,11 @@ resource "aws_lambda_permission" "oxbow_from_s3" {
   nothing exercised — set `auto_tagging.s3_notifies_queue` if a notification
   points at it.
 - **`dynamodb:*` narrowed to the set delta-rs documents** plus `DescribeTable`.
-  `CreateTable` is deliberately absent: this module creates the lock table, and
-  the logstore table is an existing input. If you point
-  `logstore_dynamodb_table_name` at a table that does not exist, create it out
-  of band — the lambda can no longer create it for you.
+  `CreateTable` is absent because neither table is created by the lambda, and
+  neither is created by this module any more. Both must exist before it runs.
+- **The SQS grants were narrowed again** to exactly
+  `AWSLambdaSQSQueueExecutionRole`'s three actions. `sqs:GetQueueUrl` and
+  `sqs:ChangeMessageVisibility` traced to no call these lambdas make.
 
 ## Fixed along the way
 
@@ -316,9 +325,6 @@ after the provider attributes they set:
 
 Other input changes:
 
-- `parquet_schema` was `list(any)`; the replacement `glue_catalog_table.columns`
-  is typed `list(object({ name, type, parameters }))`, so extra keys are now an
-  error.
 - `dead_letter_monitoring.critical` is a required `number`. It is interpolated
   into the monitor query, so a missing or non-numeric threshold used to produce
   a malformed monitor.

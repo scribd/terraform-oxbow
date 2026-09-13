@@ -6,19 +6,21 @@
 ################################################################################
 # Oxbow
 #
-# Every module here is counted, so each target indexes the module and moves the
-# resource whole (`module.x[0]...this`), which preserves the instance key. The
-# event source mappings are keyed by for_each, hence the explicit "sqs".
+# A `moved` source with no instance key must name the target *instance*, not the
+# resource: moving a keyless object onto a counted resource lands it at the
+# no-key address, and OpenTofu then destroys it. Sources that carried count in
+# the old layout keep their key across a whole-resource move, so those targets
+# are unindexed. scripts/check-moved-blocks.py enforces this.
 ################################################################################
 
 moved {
   from = aws_lambda_function.this_lambda
-  to   = module.oxbow_lambda[0].aws_lambda_function.this
+  to   = module.oxbow_lambda[0].aws_lambda_function.this[0]
 }
 
 moved {
   from = aws_iam_role.oxbow_lambda_role
-  to   = module.oxbow_lambda[0].aws_iam_role.lambda
+  to   = module.oxbow_lambda[0].aws_iam_role.lambda[0]
 }
 
 moved {
