@@ -81,5 +81,8 @@ module "oxbow" {
   dynamodb_table_name          = aws_dynamodb_table.oxbow_locking.name
   logstore_dynamodb_table_name = aws_dynamodb_table.delta_logstore.name
 
+  # Greenfield: nothing has created these log groups yet, so the module must.
+  manage_lambda_log_groups = true
+
   tags = local.tags
 }

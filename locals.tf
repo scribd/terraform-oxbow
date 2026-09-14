@@ -92,6 +92,7 @@ locals {
   # composes the set that actually writes to it, and both paths can be live at
   # once, so these are additive rather than either/or.
   s3_send_statement = {
+    sid        = "S3SendMessage"
     effect     = "Allow"
     actions    = ["sqs:SendMessage"]
     principals = [{ type = "Service", identifiers = ["s3.amazonaws.com"] }]
@@ -110,6 +111,7 @@ locals {
   }
 
   sns_send_statement = {
+    sid        = "SnsSendMessage"
     effect     = "Allow"
     actions    = ["sqs:SendMessage"]
     principals = [{ type = "Service", identifiers = ["sns.amazonaws.com"] }]
@@ -149,6 +151,16 @@ locals {
     local.auto_tagging_queue_publishers,
     { for k, v in local.same_account_only_statements : k => v if length(local.auto_tagging_queue_publishers) == 0 },
   )
+
+  # Each stage falls back to the module-wide default, so a deployment can adopt
+  # a new stage's log group without touching the ones it already has.
+  manage_log_group = {
+    oxbow        = try(coalesce(var.oxbow.manage_log_group, var.manage_lambda_log_groups), var.manage_lambda_log_groups)
+    group_events = try(coalesce(var.group_events.manage_log_group, var.manage_lambda_log_groups), var.manage_lambda_log_groups)
+    auto_tagging = try(coalesce(var.auto_tagging.manage_log_group, var.manage_lambda_log_groups), var.manage_lambda_log_groups)
+    glue_create  = try(coalesce(var.glue_create.manage_log_group, var.manage_lambda_log_groups), var.manage_lambda_log_groups)
+    glue_sync    = try(coalesce(var.glue_sync.manage_log_group, var.manage_lambda_log_groups), var.manage_lambda_log_groups)
+  }
 
   log_group_arn = "arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group"
 

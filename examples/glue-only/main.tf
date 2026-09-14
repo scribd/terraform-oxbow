@@ -48,5 +48,8 @@ module "oxbow" {
   # unset.
   rust_log_oxbow_debug_level = "info"
 
+  # Greenfield: nothing has created these log groups yet, so the module must.
+  manage_lambda_log_groups = true
+
   tags = local.tags
 }

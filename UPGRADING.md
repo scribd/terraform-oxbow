@@ -75,9 +75,9 @@ tofu import aws_s3_bucket_notification.warehouse <bucket-name>
 ```
 
 `dynamodb_table_name` and `logstore_dynamodb_table_name` are required whenever
-the `oxbow` or `auto_tagging` stage is on — they are interpolated into IAM
-resource ARNs, and the old `""` defaults produced a malformed policy that failed
-at apply. A deployment running neither stage leaves them unset.
+the `oxbow` stage is on — they are interpolated into IAM resource ARNs, and the
+old `""` defaults produced a malformed policy that failed at apply. A deployment
+without oxbow leaves them unset.
 `enable_bucket_notification` /
 `bucket_notification` are gone. The two delivery paths are now declared
 independently: `s3_notifies_ingest_queue` (default `true`) and `sns_delivery`.
@@ -230,6 +230,12 @@ resource "aws_lambda_permission" "oxbow_from_s3" {
 - **`dynamodb:*` narrowed to the set delta-rs documents** plus `DescribeTable`.
   `CreateTable` is absent because neither table is created by the lambda, and
   neither is created by this module any more. Both must exist before it runs.
+- **The auto-tagging role loses its DynamoDB and S3 read/write grants.** The
+  binary has no `deltalake` or `aws-sdk-dynamodb` dependency and makes exactly
+  one AWS call, `put_object_tagging` by key, so the six DynamoDB actions and the
+  `Get`/`Put`/`Delete` object permissions were all unexercised — `s3:DeleteObject`
+  on the bronze prefix among them. It now holds `s3:PutObjectTagging` on the
+  prefix plus the three queue-consume actions.
 - **The SQS grants were narrowed again** to exactly
   `AWSLambdaSQSQueueExecutionRole`'s three actions. `sqs:GetQueueUrl` and
   `sqs:ChangeMessageVisibility` traced to no call these lambdas make.
@@ -303,6 +309,7 @@ planning.
 | `enabled_dead_letters_monitoring` + `dl_critical` + `dl_warning` + `dl_ok` + `dl_alert_recipients` + `dl_alert_message` + `tags_monitoring` + `monitoring_query_conditions` | `dead_letter_monitoring = { critical, warning?, ok?, alert_recipients?, alert_message?, tags?, query_conditions? }` |
 | `lambda_function_name` + `lambda_s3_bucket` + `lambda_s3_key` + `oxbow_lambda_role_name` + `lambda_permissions_policy_name` + `sqs_queue_name` + `sqs_queue_name_dl` | `oxbow = { lambda_function_name, lambda_s3_bucket, lambda_s3_key, role_name, policy_name, queue_name, dl_queue_name }` |
 | `warehouse_bucket_arn` / `warehouse_bucket_account_id` | `bucket_arn` / `bucket_account_id` — the module is generic; "warehouse" came from the retired terraform-data-warehouse lineage and described one consumer's bucket out of three |
+| `sqs_fifo_queue_name` / `sqs_fifo_DL_queue_name` appended `.fifo` **unconditionally** | `group_events.fifo_queue_name` / `.fifo_dl_queue_name` append it only if absent. If your current value ends in `.fifo`, keep the doubled form (`x.fifo.fifo`) or the queue is replaced — `name` is ForceNew. logs-fastly and airbyte pass names without the suffix, so both are unaffected. |
 | the oxbow lambda was always created | `oxbow` is now nullable like every other stage; leave it set to keep today's behaviour |
 | `sns_topic_arn = ""` meant "no topic" | `sns_delivery = { topic_arn, filter_policy?, filter_policy_scope? }`, or null |
 
@@ -329,7 +336,8 @@ Other input changes:
 - `dead_letter_monitoring.critical` is a required `number`. It is interpolated
   into the monitor query, so a missing or non-numeric threshold used to produce
   a malformed monitor.
-- `dynamodb_table_name` and `logstore_dynamodb_table_name` are required.
+- `dynamodb_table_name` and `logstore_dynamodb_table_name` are required only
+  when the `oxbow` stage is on.
 - `warehouse_bucket_name` is **removed**. Its only consumer was the bucket
   notification this module no longer owns; nothing else referenced it. Drop it
   from your module block.

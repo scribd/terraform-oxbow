@@ -36,7 +36,7 @@ module "group_events_lambda" {
   create_role = false
   lambda_role = module.oxbow_lambda[0].lambda_role_arn
 
-  use_existing_cloudwatch_log_group = !var.manage_lambda_log_groups
+  use_existing_cloudwatch_log_group = !local.manage_log_group.group_events
   cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
 
   event_source_mapping = {

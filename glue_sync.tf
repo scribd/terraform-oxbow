@@ -32,7 +32,7 @@ module "glue_sync_lambda" {
   attach_policy = true
   policy        = aws_iam_policy.glue_sync[0].arn
 
-  use_existing_cloudwatch_log_group = !var.manage_lambda_log_groups
+  use_existing_cloudwatch_log_group = !local.manage_log_group.glue_sync
   cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
 
   event_source_mapping = {
@@ -60,6 +60,7 @@ module "glue_sync_queue" {
   create_queue_policy = true
   queue_policy_statements = {
     sns_send = {
+      sid        = "SnsSendMessage"
       effect     = "Allow"
       actions    = ["sqs:SendMessage"]
       principals = [{ type = "Service", identifiers = ["sns.amazonaws.com"] }]

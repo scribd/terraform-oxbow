@@ -46,6 +46,7 @@ variable "oxbow" {
     policy_name          = string
     queue_name           = string
     dl_queue_name        = string
+    manage_log_group     = optional(bool)
   })
   description = <<-EOT
     The oxbow lambda and the queue that drives it; null turns the stage off, so
@@ -129,13 +130,14 @@ variable "enable_schema_evolution" {
 variable "manage_lambda_log_groups" {
   type        = bool
   description = <<-EOT
-    Manage each lambda's CloudWatch log group with OpenTofu, which is what lets
-    the logs policy be scoped to that one group. Defaults false because a log
-    group the Lambda service already created cannot be created again: on an
-    existing deployment true fails mid-apply with ResourceAlreadyExistsException.
-    Set it true on a new deployment, or after importing the groups -- with false
-    the module reads each group with a data source, which fails at plan if it
-    does not exist yet.
+    Default for every stage: manage that lambda's CloudWatch log group with
+    OpenTofu, which is what lets the logs policy be scoped to that one group.
+    False because a log group the Lambda service already created cannot be
+    created again, so true on an existing deployment fails mid-apply with
+    ResourceAlreadyExistsException; false reads the group with a data source
+    instead, which fails at plan if it does not exist yet. Neither state suits a
+    deployment that has some lambdas already and is adding another, so each stage
+    object can override this with its own manage_log_group.
   EOT
   default     = false
 }
@@ -150,12 +152,11 @@ variable "cloudwatch_logs_retention_in_days" {
 # Lock tables
 ################################################################################
 
-# Neither table is created here; both must exist before the lambdas run. Only
-# the oxbow and auto-tagging stages touch them, so a deployment running neither
-# leaves them null rather than inventing a name.
+# Neither table is created here; both must exist before oxbow runs. Only the
+# oxbow stage touches them, so a deployment without it leaves them null.
 variable "dynamodb_table_name" {
   type        = string
-  description = "Name of the existing delta-rs S3 locking table (DYNAMO_LOCK_TABLE_NAME); required when the oxbow or auto_tagging stage is on"
+  description = "Name of the existing delta-rs S3 locking table (DYNAMO_LOCK_TABLE_NAME); required when the oxbow stage is on"
   default     = null
 
   validation {
@@ -164,14 +165,14 @@ variable "dynamodb_table_name" {
   }
 
   validation {
-    condition     = (var.oxbow == null && var.auto_tagging == null) || var.dynamodb_table_name != null
-    error_message = "dynamodb_table_name is required when the oxbow or auto_tagging stage is on."
+    condition     = var.oxbow == null || var.dynamodb_table_name != null
+    error_message = "dynamodb_table_name is required when the oxbow stage is on."
   }
 }
 
 variable "logstore_dynamodb_table_name" {
   type        = string
-  description = "Name of the existing delta logstore table (DELTA_DYNAMO_TABLE_NAME); required when the oxbow or auto_tagging stage is on"
+  description = "Name of the existing delta logstore table (DELTA_DYNAMO_TABLE_NAME); required when the oxbow stage is on"
   default     = null
 
   validation {
@@ -180,8 +181,8 @@ variable "logstore_dynamodb_table_name" {
   }
 
   validation {
-    condition     = (var.oxbow == null && var.auto_tagging == null) || var.logstore_dynamodb_table_name != null
-    error_message = "logstore_dynamodb_table_name is required when the oxbow or auto_tagging stage is on."
+    condition     = var.oxbow == null || var.logstore_dynamodb_table_name != null
+    error_message = "logstore_dynamodb_table_name is required when the oxbow stage is on."
   }
 }
 
@@ -292,6 +293,7 @@ variable "group_events" {
     max_receive_count                  = optional(number, 8)
     timeout                            = optional(number, 3)
     memory_size                        = optional(number, 128)
+    manage_log_group                   = optional(bool)
   })
   description = <<-EOT
     Batch events by table prefix before oxbow sees them. S3 events land on
@@ -318,6 +320,7 @@ variable "auto_tagging" {
     queue_name          = optional(string)
     dl_queue_name       = optional(string)
     s3_notifies_queue   = optional(bool, false)
+    manage_log_group    = optional(bool)
     filter_policy       = optional(string)
     filter_policy_scope = optional(string)
   })

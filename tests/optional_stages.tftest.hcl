@@ -249,3 +249,38 @@ run "monitor_query_conditions_are_omitted_when_unset" {
     error_message = "The monitor scope must close cleanly on the queue name alone"
   }
 }
+
+# A global flag cannot serve a deployment that already has some lambdas and is
+# adding another: true fails mid-apply on the existing groups, false fails at
+# plan on the new one. Each stage overrides it.
+run "a_new_stage_can_manage_its_own_log_group" {
+  command = plan
+
+  variables {
+    manage_lambda_log_groups = false
+    auto_tagging = {
+      lambda_s3_bucket = "test-artifacts"
+      lambda_s3_key    = "auto-tagging/auto-tagging.zip"
+      manage_log_group = true
+    }
+  }
+
+  assert {
+    condition     = local.manage_log_group.auto_tagging
+    error_message = "The new stage must be able to create its own log group"
+  }
+
+  assert {
+    condition     = !local.manage_log_group.oxbow && !local.manage_log_group.glue_sync
+    error_message = "Stages that already have log groups must keep reading them"
+  }
+}
+
+run "log_group_management_defaults_off_for_every_stage" {
+  command = plan
+
+  assert {
+    condition     = !anytrue(values(local.manage_log_group))
+    error_message = "The default must suit an upgrade, where every log group already exists"
+  }
+}

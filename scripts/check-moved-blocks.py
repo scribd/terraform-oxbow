@@ -1,60 +1,89 @@
 #!/usr/bin/env python3
-"""Fail if a `moved` block would destroy the resource it claims to relocate.
+"""Guard the two state-move hazards that `tofu test` cannot reach.
 
-A moved source with no instance key must name the target *instance*
-(`module.x[0].res.name[0]`), not the resource (`module.x[0].res.name`). Moving a
-keyless state object onto a counted resource lands it at the no-key address and
-OpenTofu then destroys it -- silently, and invisibly to `tofu test`, because
-state moves only manifest against real prior state.
+State moves only manifest against real prior state, so neither `tofu validate`
+nor the test suite sees them. Two mistakes here destroy live infrastructure:
 
-Sources that carried count/for_each in the previous layout keep their key across
-a whole-resource move, so those targets are correctly unindexed.
+1. A `moved` source with no instance key targeting a whole counted resource.
+   The object lands at the no-key address and OpenTofu destroys it. Verified
+   against OpenTofu 1.12.6: the indexed form moves in place, the unindexed form
+   plans `1 to add, 1 to destroy`.
+
+2. A `removed` block without `lifecycle { destroy = false }`. That deletes the
+   resource instead of forgetting it -- here, a live Delta lock table or a
+   bucket's entire notification configuration.
+
+Which prior resources carried a key is frozen in prior-keyed-resources.txt
+rather than read from git: the pre-rewrite tree is immutable, and shelling out
+to `git show main:` fails under a detached-HEAD checkout and breaks outright
+once this branch merges.
 """
+
+import os
+import pathlib
 import re
-import subprocess
 import sys
 
-PRIOR_REF = "main"
-PRIOR_FILES = ["main.tf", "autotagging.tf", "glue_create.tf", "glue_sync.tf", "monitoring.tf"]
+HERE = pathlib.Path(__file__).resolve().parent
+MOVED_TF = pathlib.Path(os.environ.get("MOVED_TF", HERE.parent / "moved.tf"))
+KEYED_FILE = pathlib.Path(os.environ.get("KEYED_FILE", HERE / "prior-keyed-resources.txt"))
+
+BLOCK = re.compile(r"^(moved|removed)\s*\{(.*?)^\}", re.S | re.M)
+ATTR = re.compile(r"^\s*(from|to)\s*=\s*(\S+)\s*$", re.M)
+DESTROY_FALSE = re.compile(r"lifecycle\s*\{[^}]*\bdestroy\s*=\s*false\b", re.S)
 
 
-def prior_source():
-    out = []
-    for f in PRIOR_FILES:
-        r = subprocess.run(["git", "show", f"{PRIOR_REF}:{f}"], capture_output=True, text=True)
-        if r.returncode == 0:
-            out.append(r.stdout)
-    return "\n".join(out)
-
-
-def keyed_in_prior(src):
-    keyed = set()
-    for m in re.finditer(r'(?:resource|data)\s+"(\w+)"\s+"(\w+)"\s*\{(.*?)\n\}', src, re.S):
-        typ, name, body = m.groups()
-        if re.search(r"^\s+(count|for_each)\s*=", body, re.M):
-            keyed.add(f"{typ}.{name}")
+def load_keyed():
+    if not KEYED_FILE.is_file():
+        sys.exit(f"missing {KEYED_FILE}; cannot tell which prior resources were keyed")
+    lines = [l.strip() for l in KEYED_FILE.read_text().splitlines()]
+    keyed = {l for l in lines if l and not l.startswith("#")}
+    if not keyed:
+        sys.exit(f"{KEYED_FILE} lists no resources; refusing to pass vacuously")
     return keyed
 
 
 def main():
-    blocks = re.findall(
-        r"moved\s*\{\s*from\s*=\s*([^\n]+)\n\s*to\s*=\s*([^\n]+)", open("moved.tf").read()
-    )
+    if not MOVED_TF.is_file():
+        sys.exit(f"missing {MOVED_TF}")
+    keyed = load_keyed()
+
+    blocks = BLOCK.findall(MOVED_TF.read_text())
     if not blocks:
-        sys.exit("no moved blocks found -- is moved.tf still there?")
+        sys.exit("no moved or removed blocks parsed -- the guard would pass vacuously")
 
-    keyed = keyed_in_prior(prior_source())
-    bad = []
-    for frm, to in blocks:
-        frm, to = frm.strip(), to.strip()
-        source_has_key = frm.endswith("]") or re.sub(r"\[.*\]$", "", frm) in keyed
-        if not source_has_key and not to.endswith("]"):
-            bad.append((frm, to))
+    problems = []
+    moved = removed = 0
+    for kind, body in blocks:
+        attrs = dict(ATTR.findall(body))
+        if kind == "moved":
+            moved += 1
+            frm, to = attrs.get("from"), attrs.get("to")
+            if not frm or not to:
+                problems.append(f"moved block missing from/to:\n{body.strip()}")
+                continue
+            source_has_key = frm.endswith("]") or re.sub(r"\[.*\]$", "", frm) in keyed
+            if not source_has_key and not to.endswith("]"):
+                problems.append(
+                    f"DESTROYS: {frm}\n       -> {to}\n"
+                    f"       source has no instance key, so the target must name one: {to}[0]"
+                )
+        else:
+            removed += 1
+            frm = attrs.get("from")
+            if not frm:
+                problems.append(f"removed block missing from:\n{body.strip()}")
+                continue
+            if not DESTROY_FALSE.search(body):
+                problems.append(
+                    f"DESTROYS: removed {frm}\n"
+                    f"       needs lifecycle {{ destroy = false }} to forget rather than delete"
+                )
 
-    for frm, to in bad:
-        print(f"DESTROYS: {frm}\n       -> {to}\n       target must name the instance, e.g. {to}[0]\n")
-    print(f"checked {len(blocks)} moved blocks, {len(bad)} would destroy")
-    sys.exit(1 if bad else 0)
+    for p in problems:
+        print(p + "\n")
+    print(f"checked {moved} moved and {removed} removed blocks, {len(problems)} would destroy")
+    sys.exit(1 if problems else 0)
 
 
 if __name__ == "__main__":

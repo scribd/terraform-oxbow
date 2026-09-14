@@ -65,7 +65,7 @@ module "oxbow" {
   source = "github.com/scribd/terraform-oxbow?ref=v2.0.0"
 
   bucket_arn = module.warehouse.s3_bucket_arn
-  s3_path              = "catalogs/bronze_monolith"
+  s3_path    = "catalogs/bronze_monolith"
 
   oxbow = {
     lambda_function_name = "${var.env}-oxbow"
@@ -125,8 +125,9 @@ outlives any single pipeline, so neither belongs to this module:
   notification straight at a function rather than at its queue, grant the
   invoke yourself.
 - **The lock table and the logstore table.** Pass their names as
-  `dynamodb_table_name` and `logstore_dynamodb_table_name`; both are required.
-  delta-rs hard-codes `key` as the lock table's partition key.
+  `dynamodb_table_name` and `logstore_dynamodb_table_name`, required whenever the
+  `oxbow` stage is on. delta-rs hard-codes `key` as the lock table's partition
+  key.
 
 The module needs only what its policies reference: `bucket_arn` and
 `s3_path` scope the object grants to
@@ -202,7 +203,7 @@ leaves all four unset:
 
 | Input | Required when |
 | --- | --- |
-| `dynamodb_table_name`, `logstore_dynamodb_table_name` | `oxbow` or `auto_tagging` is set |
+| `dynamodb_table_name`, `logstore_dynamodb_table_name` | `oxbow` is set |
 | `aws_s3_locking_provider`, `rust_log_deltalake_debug_level` | `oxbow` is set |
 
 Everything else is a stage object (null-gated, above) or a tunable with a
@@ -233,10 +234,22 @@ default:
 OpenTofu, which is what lets the logs IAM policy be scoped to that one group
 instead of `*`. It defaults to **`false`** because a log group the Lambda
 service already created cannot be created again — `true` on an existing
-deployment fails mid-apply with `ResourceAlreadyExistsException`. Set it `true`
-on a new deployment, or after importing the groups; see
-[UPGRADING.md](UPGRADING.md). With `false` the module reads each group with a
-data source, which fails at plan if it does not exist yet.
+deployment fails mid-apply with `ResourceAlreadyExistsException`, while `false`
+reads the group with a data source and fails at plan if it does not exist yet.
+Set it `true` on a new deployment.
+
+Neither value suits a deployment that already has some lambdas and is adding
+another, so every stage object takes its own `manage_log_group` override:
+
+```hcl
+  manage_lambda_log_groups = false        # the four lambdas you already have
+
+  auto_tagging = {
+    lambda_s3_bucket = var.artifacts_bucket
+    lambda_s3_key    = "auto-tagging/auto-tagging.zip"
+    manage_log_group = true                # the one you are adding
+  }
+```
 
 ## Examples
 

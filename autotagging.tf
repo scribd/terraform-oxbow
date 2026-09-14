@@ -31,7 +31,7 @@ module "auto_tagging_lambda" {
   attach_policy = true
   policy        = aws_iam_policy.auto_tagging[0].arn
 
-  use_existing_cloudwatch_log_group = !var.manage_lambda_log_groups
+  use_existing_cloudwatch_log_group = !local.manage_log_group.auto_tagging
   cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
 
   event_source_mapping = {
@@ -95,33 +95,14 @@ resource "aws_iam_policy" "auto_tagging" {
 data "aws_iam_policy_document" "auto_tagging" {
   count = local.enabled.auto_tagging ? 1 : 0
 
+  # The binary makes exactly one AWS call, put_object_tagging by key, and has no
+  # deltalake or dynamodb dependency at all.
+  # https://github.com/buoyant-data/oxbow/blob/main/lambdas/auto-tag/src/main.rs
   statement {
-    sid       = "DeltaLockTables"
+    sid       = "TagObjectsInPrefix"
     effect    = "Allow"
-    actions   = local.expected_dynamodb_actions
-    resources = local.delta_lock_table_arns
-  }
-
-  statement {
-    sid    = "WarehousePrefixReadWrite"
-    effect = "Allow"
-    actions = [
-      "s3:GetObject",
-      "s3:GetObjectTagging",
-      "s3:GetObjectVersion",
-      "s3:PutObject",
-      "s3:PutObjectTagging",
-      "s3:DeleteObject",
-      "s3:DeleteObjectTagging",
-    ]
+    actions   = ["s3:PutObjectTagging"]
     resources = ["${local.s3_prefix_arn}/*"]
-  }
-
-  statement {
-    sid       = "WarehouseBucketList"
-    effect    = "Allow"
-    actions   = ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketVersions"]
-    resources = [var.bucket_arn]
   }
 
   statement {

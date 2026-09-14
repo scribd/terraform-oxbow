@@ -43,7 +43,7 @@ module "oxbow_lambda" {
   attach_policy = true
   policy        = aws_iam_policy.oxbow_lambda[0].arn
 
-  use_existing_cloudwatch_log_group = !var.manage_lambda_log_groups
+  use_existing_cloudwatch_log_group = !local.manage_log_group.oxbow
   cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
   attach_policy_statements          = local.enabled.group_events
   policy_statements = local.enabled.group_events ? {
@@ -111,7 +111,7 @@ data "aws_iam_policy_document" "oxbow_lambda" {
   }
 
   statement {
-    sid    = "WarehousePrefixReadWrite"
+    sid    = "PrefixObjectReadWrite"
     effect = "Allow"
     actions = [
       "s3:GetObject",
@@ -126,7 +126,7 @@ data "aws_iam_policy_document" "oxbow_lambda" {
   }
 
   statement {
-    sid       = "WarehouseBucketList"
+    sid       = "BucketList"
     effect    = "Allow"
     actions   = ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketVersions"]
     resources = [var.bucket_arn]
