@@ -646,3 +646,32 @@ run "no_queue_ever_gets_an_empty_policy" {
     error_message = "The auto-tagging queue policy would render without a Statement key"
   }
 }
+
+# The sqs module's dlq_message_retention_seconds defaults to null and only
+# reaches 14 days by coalescing from the primary queue. It is passed explicitly
+# so the DLQs do not silently fall back to the AWS 4-day default if that
+# coalesce ever changes.
+run "retention_defaults_to_the_sqs_maximum" {
+  command = plan
+
+  assert {
+    condition     = var.message_retention_seconds == 1209600
+    error_message = "Every queue should retain for 14 days, the SQS maximum"
+  }
+}
+
+run "retention_above_the_sqs_maximum_is_rejected" {
+  command = plan
+  variables {
+    message_retention_seconds = 1209601
+  }
+  expect_failures = [var.message_retention_seconds]
+}
+
+run "retention_below_the_sqs_minimum_is_rejected" {
+  command = plan
+  variables {
+    message_retention_seconds = 59
+  }
+  expect_failures = [var.message_retention_seconds]
+}

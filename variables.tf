@@ -210,8 +210,13 @@ variable "sqs_redrive_policy_maxReceiveCount" {
 
 variable "message_retention_seconds" {
   type        = number
-  description = "Message retention for every queue this module creates"
+  description = "Message retention for every queue and dead letter queue this module creates. Defaults to 1209600s (14 days), the SQS maximum, so a failed event has the longest possible window to be inspected and redriven."
   default     = 1209600
+
+  validation {
+    condition     = var.message_retention_seconds >= 60 && var.message_retention_seconds <= 1209600
+    error_message = "message_retention_seconds must be between 60 (1 minute) and 1209600 (14 days, the SQS maximum)."
+  }
 }
 
 variable "sqs_managed_sse_enabled" {

@@ -61,6 +61,7 @@ module "auto_tagging_queue" {
 
   create_dlq                     = true
   dlq_name                       = local.auto_tagging_dlq_name
+  dlq_message_retention_seconds  = var.message_retention_seconds
   dlq_delay_seconds              = 0
   dlq_visibility_timeout_seconds = 30
   redrive_policy                 = { maxReceiveCount = var.sqs_redrive_policy_maxReceiveCount }

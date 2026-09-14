@@ -222,7 +222,7 @@ default:
 | `sqs_visibility_timeout_seconds` | `120` | primary queues; DLQs stay at 30 |
 | `sqs_delay_seconds` | `180` | primary queues; DLQs stay at 0 |
 | `sqs_redrive_policy_maxReceiveCount` | `10` | receives before a message dead-letters |
-| `message_retention_seconds` | `1209600` | every queue this module creates |
+| `message_retention_seconds` | `1209600` | 14 days, the SQS maximum; every queue **and DLQ** |
 | `sqs_managed_sse_enabled` | `true` | SSE-SQS needs no KMS grants |
 | `bucket_account_id` | `null` | defaults to the current account |
 | `s3_notifies_ingest_queue` | `true` | see Event delivery |

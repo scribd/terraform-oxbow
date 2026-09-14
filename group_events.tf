@@ -68,6 +68,7 @@ module "group_events_queue" {
 
   create_dlq                     = true
   dlq_name                       = var.group_events.dl_queue_name
+  dlq_message_retention_seconds  = var.message_retention_seconds
   dlq_delay_seconds              = 0
   dlq_visibility_timeout_seconds = 30
   redrive_policy                 = { maxReceiveCount = var.group_events.max_receive_count }
@@ -97,8 +98,9 @@ module "oxbow_fifo_queue" {
   create_queue_policy     = true
   queue_policy_statements = local.same_account_only_statements
 
-  create_dlq = true
-  dlq_name   = local.fifo_dlq_name
+  create_dlq                    = true
+  dlq_name                      = local.fifo_dlq_name
+  dlq_message_retention_seconds = var.message_retention_seconds
   # The sqs module coalesces these from the primary queue, which would flip the
   # live DLQ's dedup flag. Not covered by tofu test: assertions cannot reach a
   # child module's resources.

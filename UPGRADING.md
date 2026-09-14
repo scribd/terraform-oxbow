@@ -160,9 +160,11 @@ as inline attributes or did not have at all.
   receive through their IAM role.
 - **Auto-tagging queue retention rises from 4 days to 14.** Neither the
   auto-tagging queue nor its DLQ set `message_retention_seconds` before, so both
-  ran on the AWS default of 345600s; they now take `message_retention_seconds`
-  (default 1209600s) like every other queue. Pin that variable if you want the
-  old value.
+  ran on the AWS default of 345600s. Every queue and every DLQ now takes
+  `message_retention_seconds`, which defaults to 1209600s — 14 days, the SQS
+  maximum — so a failed event has the longest possible window to be inspected
+  and redriven. Each DLQ is passed it explicitly rather than relying on the sqs
+  module coalescing it from the primary queue.
 - **The FIFO dead letter queue keeps `content_based_deduplication = false`.**
   The sqs module would otherwise coalesce it from the primary FIFO queue and
   flip it to `true`; it is pinned explicitly.
