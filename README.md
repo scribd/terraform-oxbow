@@ -239,7 +239,7 @@ reads the group with a data source and fails at plan if it does not exist yet.
 Set it `true` on a new deployment.
 
 Neither value suits a deployment that already has some lambdas and is adding
-another, so every stage object takes its own `manage_log_group` override:
+another, so all five stage objects take their own `manage_log_group` override:
 
 ```hcl
   manage_lambda_log_groups = false        # the four lambdas you already have

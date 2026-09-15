@@ -155,11 +155,11 @@ locals {
   # Each stage falls back to the module-wide default, so a deployment can adopt
   # a new stage's log group without touching the ones it already has.
   manage_log_group = {
-    oxbow        = try(coalesce(var.oxbow.manage_log_group, var.manage_lambda_log_groups), var.manage_lambda_log_groups)
-    group_events = try(coalesce(var.group_events.manage_log_group, var.manage_lambda_log_groups), var.manage_lambda_log_groups)
-    auto_tagging = try(coalesce(var.auto_tagging.manage_log_group, var.manage_lambda_log_groups), var.manage_lambda_log_groups)
-    glue_create  = try(coalesce(var.glue_create.manage_log_group, var.manage_lambda_log_groups), var.manage_lambda_log_groups)
-    glue_sync    = try(coalesce(var.glue_sync.manage_log_group, var.manage_lambda_log_groups), var.manage_lambda_log_groups)
+    oxbow        = local.enabled.oxbow ? coalesce(var.oxbow.manage_log_group, var.manage_lambda_log_groups) : false
+    group_events = local.enabled.group_events ? coalesce(var.group_events.manage_log_group, var.manage_lambda_log_groups) : false
+    auto_tagging = local.enabled.auto_tagging ? coalesce(var.auto_tagging.manage_log_group, var.manage_lambda_log_groups) : false
+    glue_create  = local.enabled.glue_create ? coalesce(var.glue_create.manage_log_group, var.manage_lambda_log_groups) : false
+    glue_sync    = local.enabled.glue_sync ? coalesce(var.glue_sync.manage_log_group, var.manage_lambda_log_groups) : false
   }
 
   log_group_arn = "arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group"

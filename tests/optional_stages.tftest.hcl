@@ -284,3 +284,61 @@ run "log_group_management_defaults_off_for_every_stage" {
     error_message = "The default must suit an upgrade, where every log group already exists"
   }
 }
+
+# Two stages shipped without this field because a patch anchor missed and a
+# try() swallowed the resulting missing-attribute error. Assert every stage can
+# actually override it.
+run "every_stage_can_override_its_log_group" {
+  command = plan
+
+  variables {
+    manage_lambda_log_groups = false
+
+    auto_tagging = {
+      lambda_s3_bucket = "test-artifacts"
+      lambda_s3_key    = "auto-tagging/auto-tagging.zip"
+      manage_log_group = true
+    }
+
+    glue_create = {
+      athena_workgroup_name = "test-glue-create"
+      athena_data_source    = "AwsDataCatalog"
+      athena_bucket_name    = "test-glue-create-athena"
+      lambda_s3_bucket      = "test-artifacts"
+      lambda_s3_key         = "glue-create/glue-create.zip"
+      lambda_function_name  = "test-glue-create"
+      sns_topic_arn         = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      sqs_queue_name        = "test-glue-create-queue"
+      sqs_queue_name_dl     = "test-glue-create-queue-dl"
+      iam_role_name         = "test-glue-create-role"
+      iam_policy_name       = "test-glue-create-policy"
+      manage_log_group      = true
+    }
+
+    glue_sync = {
+      lambda_s3_bucket     = "test-artifacts"
+      lambda_s3_key        = "glue-sync/glue-sync.zip"
+      lambda_function_name = "test-glue-sync"
+      sns_topic_arn        = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      sqs_queue_name       = "test-glue-sync-queue"
+      sqs_queue_name_dl    = "test-glue-sync-queue-dl"
+      iam_role_name        = "test-glue-sync-role"
+      iam_policy_name      = "test-glue-sync-policy"
+      manage_log_group     = true
+    }
+  }
+
+  assert {
+    condition = (
+      local.manage_log_group.auto_tagging &&
+      local.manage_log_group.glue_create &&
+      local.manage_log_group.glue_sync
+    )
+    error_message = "Every stage's manage_log_group override must reach the lambda module"
+  }
+
+  assert {
+    condition     = !local.manage_log_group.oxbow
+    error_message = "A stage that did not override it keeps the module-wide default"
+  }
+}

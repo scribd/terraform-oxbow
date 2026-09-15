@@ -385,6 +385,7 @@ variable "glue_create" {
     path_regex            = optional(string, "")
     filter_policy         = optional(string)
     filter_policy_scope   = optional(string)
+    manage_log_group      = optional(bool)
   })
   description = "Create Glue catalog tables from the S3 path, running DDL through a dedicated Athena workgroup"
   default     = null
@@ -428,6 +429,7 @@ variable "glue_sync" {
     path_regex           = optional(string, "")
     filter_policy        = optional(string)
     filter_policy_scope  = optional(string)
+    manage_log_group     = optional(bool)
   })
   description = "Keep existing Glue catalog tables in step with the Delta tables oxbow writes"
   default     = null
