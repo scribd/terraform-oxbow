@@ -131,8 +131,10 @@ variable "manage_lambda_log_groups" {
   type        = bool
   description = <<-EOT
     Default for every stage: manage that lambda's CloudWatch log group with
-    OpenTofu, which is what lets the logs policy be scoped to that one group.
-    False because a log group the Lambda service already created cannot be
+    OpenTofu, which gets you retention control and drops logs:CreateLogGroup
+    from the role. The logs policy is scoped to the one group either way -- with
+    false the lambda module reads the group's ARN with a data source. False
+    because a log group the Lambda service already created cannot be
     created again, so true on an existing deployment fails mid-apply with
     ResourceAlreadyExistsException; false reads the group with a data source
     instead, which fails at plan if it does not exist yet. Neither state suits a

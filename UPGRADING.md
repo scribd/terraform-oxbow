@@ -16,6 +16,13 @@ changes below.
   bump is not optional: v6 removed `aws_iam_role.managed_policy_arns`, which the
   previous version of this module used.
 - Do not commit `.terraform.lock.hcl`.
+- **This assumes you are on v1.0.9.** From v1.0.8 or earlier your plan will also
+  destroy resources the module dropped *before* this rewrite — notably the
+  Kinesis Firehose delivery stream and its IAM role and policy, gone since
+  v1.0.4 and carrying no `removed` block. `scribd/terraform-payments` pins
+  `v1.0.3` and still passes `lambda_kinesis_role_name`, so it is the one
+  affected; upgrade it to v1.0.9 first, or read its plan for destroys outside
+  the list below.
 
 ## Three resources leave this module's scope
 
@@ -238,6 +245,22 @@ resource "aws_lambda_permission" "oxbow_from_s3" {
   `Get`/`Put`/`Delete` object permissions were all unexercised — `s3:DeleteObject`
   on the bronze prefix among them. It now holds `s3:PutObjectTagging` on the
   prefix plus the three queue-consume actions.
+- **The glue stages lose grants their binaries never call.** glue-sync calls
+  only `get_table` and `update_table`, so it keeps `glue:GetTable` and
+  `glue:UpdateTable` and loses `GetTables`, `GetPartitions`, `GetDatabase`,
+  `GetDatabases`, and — the ones that mattered — `CreateTable` and
+  `CreateDatabase`. glue-create keeps `GetTable`, `CreateTable` (Athena runs its
+  DDL under the lambda's identity), `GetDatabase` and `CreateDatabase`, and
+  loses `GetTables`, `GetPartitions`, `UpdateTable`, `GetDatabases`,
+  `athena:GetQueryResults`, `athena:StopQueryExecution` and the
+  `athena:ListWorkGroups` statement on `Resource: "*"`.
+- **The auto-tagging lambda stops being told to unwrap an SNS envelope that is
+  not there.** It received `UNWRAP_SNS_ENVELOPE=false` when no topic was
+  configured, and the binary matches on the variable's *presence*, so it took
+  the SNS path anyway: the inner parse of a raw S3 body fails, the code only
+  warns, and nothing is tagged — no error, no dead letter. The flag is now
+  omitted entirely unless `sns_delivery` is set. It also gains `RUST_LOG`,
+  without which its log lines were suppressed.
 - **The SQS grants were narrowed again** to exactly
   `AWSLambdaSQSQueueExecutionRole`'s three actions. `sqs:GetQueueUrl` and
   `sqs:ChangeMessageVisibility` traced to no call these lambdas make.

@@ -173,8 +173,14 @@ topic:
 
 ```hcl
   sns_delivery = {
-    topic_arn     = aws_sns_topic.warehouse_events.arn
-    filter_policy = jsonencode({ prefix = ["catalogs/bronze_monolith/"] })
+    topic_arn = aws_sns_topic.warehouse_events.arn
+    # An S3 notification carries no message attributes, so a filter has to read
+    # the body. A top-level key is an *attribute name*: {"prefix": [...]} would
+    # match an attribute literally called "prefix" and therefore nothing.
+    filter_policy = jsonencode({
+      Records = { s3 = { object = { key = [{ prefix = "catalogs/bronze_monolith/" }] } } }
+    })
+    filter_policy_scope = "MessageBody"
   }
 ```
 
@@ -231,8 +237,10 @@ default:
 ## Lambda log groups
 
 `manage_lambda_log_groups` has each lambda's CloudWatch log group created by
-OpenTofu, which is what lets the logs IAM policy be scoped to that one group
-instead of `*`. It defaults to **`false`** because a log group the Lambda
+OpenTofu, which gets you retention control and drops `logs:CreateLogGroup` from
+the role. The logs policy is scoped to that one group either way — with `false`
+the lambda module reads its ARN with a data source. It defaults to **`false`**
+because a log group the Lambda
 service already created cannot be created again — `true` on an existing
 deployment fails mid-apply with `ResourceAlreadyExistsException`, while `false`
 reads the group with a data source and fails at plan if it does not exist yet.
@@ -268,6 +276,11 @@ tofu init -backend=false && tofu validate && tofu test
 python3 scripts/test-check-moved-blocks.py && python3 scripts/check-moved-blocks.py
 for d in examples/*/; do (cd "$d" && tofu init -backend=false && tofu validate); done
 ```
+
+`validate` does not evaluate locals against their inputs, which is how a
+`oxbow = null` deployment once passed every check and still failed at plan. Run
+`tofu plan` on `examples/glue-only` too when touching `locals.tf` or a
+variable's nullability.
 
 Both providers are mocked, so `tofu test` needs no AWS or Datadog credentials.
 It covers the feature gates, the event-delivery wiring, the derived names and

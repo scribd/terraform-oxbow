@@ -72,7 +72,10 @@ module "oxbow" {
   auto_tagging = {
     lambda_s3_bucket = local.artifacts
     lambda_s3_key    = "auto-tagging/auto-tagging.zip"
-    filter_policy    = jsonencode({ prefix = ["${local.s3_path}/"] })
+    filter_policy = jsonencode({
+      Records = { s3 = { object = { key = [{ prefix = "${local.s3_path}/" }] } } }
+    })
+    filter_policy_scope = "MessageBody"
   }
 
   glue_create = {

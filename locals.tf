@@ -19,7 +19,7 @@ locals {
     sns_delivery  = var.sns_delivery != null
   }
 
-  sns_topic_arn = try(var.sns_delivery.topic_arn, null)
+  sns_topic_arn = local.enabled.sns_delivery ? var.sns_delivery.topic_arn : null
 
   # S3 bucket ARNs carry no account id, so a cross-account bucket has to name
   # its owner explicitly or the SourceAccount conditions reject it.
@@ -36,11 +36,11 @@ locals {
   # oxbow does and grouping is off.
   oxbow_standard_queue = local.enabled.oxbow && !local.enabled.group_events
 
-  oxbow_source_queue_name = local.enabled.group_events ? local.fifo_queue_name : try(var.oxbow.queue_name, null)
-  ingest_queue_name       = local.enabled.group_events ? var.group_events.queue_name : try(var.oxbow.queue_name, null)
+  oxbow_source_queue_name = local.enabled.group_events ? local.fifo_queue_name : (local.enabled.oxbow ? var.oxbow.queue_name : null)
+  ingest_queue_name       = local.enabled.group_events ? var.group_events.queue_name : (local.enabled.oxbow ? var.oxbow.queue_name : null)
 
-  oxbow_source_queue_arn = local.enabled.group_events ? module.oxbow_fifo_queue[0].queue_arn : try(module.oxbow_queue[0].queue_arn, null)
-  ingest_queue_arn       = local.enabled.group_events ? module.group_events_queue[0].queue_arn : try(module.oxbow_queue[0].queue_arn, null)
+  oxbow_source_queue_arn = local.enabled.group_events ? module.oxbow_fifo_queue[0].queue_arn : (local.oxbow_standard_queue ? module.oxbow_queue[0].queue_arn : null)
+  ingest_queue_arn       = local.enabled.group_events ? module.group_events_queue[0].queue_arn : (local.oxbow_standard_queue ? module.oxbow_queue[0].queue_arn : null)
 
   # Auto tagging names default to the oxbow names with a suffix, which is how
   # they have always been derived. Without oxbow there is nothing to derive
@@ -55,8 +55,8 @@ locals {
   s3_prefix_arn = "${var.bucket_arn}/${var.s3_path}"
 
   dynamodb_table_arn_prefix = "arn:${local.partition}:dynamodb:${local.region}:${local.account_id}:table"
-  lock_table_arn            = "${local.dynamodb_table_arn_prefix}/${var.dynamodb_table_name}"
-  logstore_table_arn        = "${local.dynamodb_table_arn_prefix}/${var.logstore_dynamodb_table_name}"
+  lock_table_arn            = var.dynamodb_table_name == null ? null : "${local.dynamodb_table_arn_prefix}/${var.dynamodb_table_name}"
+  logstore_table_arn        = var.logstore_dynamodb_table_name == null ? null : "${local.dynamodb_table_arn_prefix}/${var.logstore_dynamodb_table_name}"
 
   # The set delta-rs documents for the DynamoDB locking provider, plus the
   # DescribeTable its client issues on init. Deliberately no CreateTable:
@@ -72,6 +72,15 @@ locals {
   ]
 
   delta_lock_table_arns = [local.lock_table_arn, local.logstore_table_arn]
+
+  # Traced to the calls each binary actually makes. glue-sync is get_table +
+  # update_table only; glue-create adds get_database, create_database, and
+  # create_table indirectly -- Athena runs its CREATE EXTERNAL TABLE DDL under
+  # the lambda's identity.
+  # https://github.com/buoyant-data/oxbow/tree/main/lambdas
+  glue_sync_actions   = ["glue:GetTable", "glue:UpdateTable"]
+  glue_create_actions = ["glue:GetTable", "glue:CreateTable", "glue:GetDatabase", "glue:CreateDatabase"]
+  athena_actions      = ["athena:StartQueryExecution", "athena:GetQueryExecution", "athena:GetWorkGroup"]
 
   glue_catalog_resources = [
     "arn:${local.partition}:glue:${local.region}:${local.account_id}:catalog",

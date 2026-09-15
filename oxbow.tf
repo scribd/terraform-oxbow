@@ -3,7 +3,7 @@
 # drives the lambda.
 
 locals {
-  oxbow_environment = merge(
+  oxbow_environment = !local.enabled.oxbow ? {} : merge(
     {
       AWS_S3_LOCKING_PROVIDER = var.aws_s3_locking_provider
       RUST_LOG                = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
@@ -11,8 +11,8 @@ locals {
       DELTA_DYNAMO_TABLE_NAME = var.logstore_dynamodb_table_name
     },
     # With grouping on, the group-events lambda already unwrapped the envelope.
-    !local.enabled.group_events && local.enabled.sns_delivery ? { UNWRAP_SNS_ENVELOPE = true } : {},
-    var.enable_schema_evolution ? { SCHEMA_EVOLUTION = true } : {},
+    !local.enabled.group_events && local.enabled.sns_delivery ? { UNWRAP_SNS_ENVELOPE = "true" } : {},
+    var.enable_schema_evolution ? { SCHEMA_EVOLUTION = "true" } : {},
   )
 }
 

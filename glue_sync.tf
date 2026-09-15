@@ -25,7 +25,7 @@ module "glue_sync_lambda" {
   environment_variables = {
     RUST_LOG            = var.rust_log_oxbow_debug_level
     GLUE_PATH_REGEX     = var.glue_sync.path_regex
-    UNWRAP_SNS_ENVELOPE = true
+    UNWRAP_SNS_ENVELOPE = "true"
   }
 
   role_name     = var.glue_sync.iam_role_name
@@ -110,22 +110,9 @@ data "aws_iam_policy_document" "glue_sync" {
   count = local.enabled.glue_sync ? 1 : 0
 
   statement {
-    sid    = "GlueAllowTables"
-    effect = "Allow"
-    actions = [
-      "glue:GetTable",
-      "glue:GetTables",
-      "glue:GetPartitions",
-      "glue:CreateTable",
-      "glue:UpdateTable",
-    ]
-    resources = local.glue_catalog_resources
-  }
-
-  statement {
-    sid       = "GlueCatalogAllowDatabases"
+    sid       = "GlueReadUpdateTables"
     effect    = "Allow"
-    actions   = ["glue:GetDatabase", "glue:GetDatabases", "glue:CreateDatabase"]
+    actions   = local.glue_sync_actions
     resources = local.glue_catalog_resources
   }
 

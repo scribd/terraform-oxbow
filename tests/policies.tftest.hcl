@@ -299,8 +299,13 @@ run "no_identity_policy_action_uses_a_wildcard" {
 
   assert {
     condition = alltrue([
-      for a in concat(local.expected_dynamodb_actions, local.sqs_consumer_actions) :
-      !endswith(a, ":*")
+      for a in concat(
+        local.expected_dynamodb_actions,
+        local.sqs_consumer_actions,
+        local.glue_sync_actions,
+        local.glue_create_actions,
+        local.athena_actions,
+      ) : !endswith(a, ":*")
     ])
     error_message = "Identity-policy actions must be enumerated, never service:*"
   }
@@ -572,7 +577,7 @@ run "sns_topic_only" {
   }
 
   assert {
-    condition     = local.oxbow_environment["UNWRAP_SNS_ENVELOPE"] == true
+    condition     = local.oxbow_environment["UNWRAP_SNS_ENVELOPE"] == "true"
     error_message = "Oxbow must unwrap the SNS envelope when fed from a topic"
   }
 }
@@ -674,4 +679,76 @@ run "retention_below_the_sqs_minimum_is_rejected" {
     message_retention_seconds = 59
   }
   expect_failures = [var.message_retention_seconds]
+}
+
+# `Ok(_) => s3_from_sns(...)` in the auto-tag binary matches the variable's
+# presence, not its value, so UNWRAP_SNS_ENVELOPE=false still unwraps an
+# envelope that is not there: zero records, nothing tagged, no error, no DLQ.
+run "auto_tagging_omits_the_unwrap_flag_without_a_topic" {
+  command = plan
+
+  variables {
+    auto_tagging = {
+      lambda_s3_bucket  = "test-artifacts"
+      lambda_s3_key     = "auto-tagging/auto-tagging.zip"
+      s3_notifies_queue = true
+    }
+  }
+
+  assert {
+    condition     = !contains(keys(local.auto_tagging_environment), "UNWRAP_SNS_ENVELOPE")
+    error_message = "Fed straight from S3, the flag must be absent rather than false"
+  }
+
+  assert {
+    condition     = local.auto_tagging_environment["RUST_LOG"] == "info"
+    error_message = "The auto-tagging lambda needs RUST_LOG or it logs nothing"
+  }
+}
+
+run "auto_tagging_sets_the_unwrap_flag_with_a_topic" {
+  command = plan
+
+  variables {
+    sns_delivery = { topic_arn = "arn:aws:sns:us-east-2:123456789012:warehouse-events" }
+    auto_tagging = {
+      lambda_s3_bucket = "test-artifacts"
+      lambda_s3_key    = "auto-tagging/auto-tagging.zip"
+    }
+  }
+
+  assert {
+    condition     = local.auto_tagging_environment["UNWRAP_SNS_ENVELOPE"] == "true"
+    error_message = "Fed from a topic, the lambda must unwrap the envelope"
+  }
+}
+
+# glue-sync calls get_table and update_table; glue-create adds get_database,
+# create_database, and create_table indirectly through Athena's DDL. Everything
+# else the old policies granted traced to no call either binary makes.
+run "glue_grants_trace_to_calls_the_binaries_make" {
+  command = plan
+
+  assert {
+    condition     = toset(local.glue_sync_actions) == toset(["glue:GetTable", "glue:UpdateTable"])
+    error_message = "glue-sync only reads and updates existing tables"
+  }
+
+  assert {
+    condition     = !contains(local.glue_sync_actions, "glue:CreateTable") && !contains(local.glue_sync_actions, "glue:CreateDatabase")
+    error_message = "A read-and-update lambda must not be able to mint catalog objects"
+  }
+
+  assert {
+    condition     = !contains(local.athena_actions, "athena:ListWorkGroups")
+    error_message = "The workgroup comes from ATHENA_WORKGROUP; nothing lists them, and listing needs Resource \"*\""
+  }
+
+  assert {
+    condition = alltrue([
+      for a in ["athena:GetQueryResults", "athena:StopQueryExecution"] :
+      !contains(local.athena_actions, a)
+    ])
+    error_message = "The DDL returns no results and is never cancelled"
+  }
 }

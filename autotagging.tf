@@ -1,3 +1,12 @@
+locals {
+  # The binary matches on UNWRAP_SNS_ENVELOPE's presence, not its value, so
+  # setting it to false still takes the SNS-unwrapping path and tags nothing.
+  auto_tagging_environment = merge(
+    { RUST_LOG = var.rust_log_oxbow_debug_level },
+    local.enabled.sns_delivery ? { UNWRAP_SNS_ENVELOPE = "true" } : {},
+  )
+}
+
 # Optional auto-tagging stage: tags objects as they land, on its own queue and
 # its own role so it can be enabled independently of oxbow.
 
@@ -23,9 +32,7 @@ module "auto_tagging_lambda" {
   timeout                        = var.lambda_timeout
   reserved_concurrent_executions = var.lambda_reserved_concurrent_executions
 
-  environment_variables = {
-    UNWRAP_SNS_ENVELOPE = local.enabled.sns_delivery
-  }
+  environment_variables = local.auto_tagging_environment
 
   role_name     = local.auto_tagging_role_name
   attach_policy = true

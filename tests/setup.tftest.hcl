@@ -130,8 +130,10 @@ run "oxbow_environment_without_sns" {
     error_message = "UNWRAP_SNS_ENVELOPE must be absent when events come straight from S3"
   }
 
+  # The lambda module types environment_variables as map(string), so every
+  # value is a string by the time it reaches AWS regardless of how it is written.
   assert {
-    condition     = local.oxbow_environment["SCHEMA_EVOLUTION"] == true
+    condition     = local.oxbow_environment["SCHEMA_EVOLUTION"] == "true"
     error_message = "Schema evolution is on by default"
   }
 }
@@ -157,7 +159,7 @@ run "sns_delivery_sets_unwrap_and_subscribes" {
   }
 
   assert {
-    condition     = local.oxbow_environment["UNWRAP_SNS_ENVELOPE"] == true
+    condition     = local.oxbow_environment["UNWRAP_SNS_ENVELOPE"] == "true"
     error_message = "Oxbow must unwrap the SNS envelope when fed from a topic"
   }
 

@@ -58,8 +58,13 @@ module "oxbow" {
   # Events arrive only through the topic, so the queue policy should not carry
   # an S3 grant nothing uses.
   sns_delivery = {
-    topic_arn     = local.topic_arn
-    filter_policy = jsonencode({ prefix = ["${local.s3_path}/"] })
+    topic_arn = local.topic_arn
+    # A top-level key names a message *attribute*; S3 notifications set none,
+    # so the filter has to read the body.
+    filter_policy = jsonencode({
+      Records = { s3 = { object = { key = [{ prefix = "${local.s3_path}/" }] } } }
+    })
+    filter_policy_scope = "MessageBody"
   }
   s3_notifies_ingest_queue = false
 

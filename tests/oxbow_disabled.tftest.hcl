@@ -41,14 +41,10 @@ variables {
   s3_path    = "catalogs/bronze_monolith"
 
 
-  rust_log_deltalake_debug_level = "info"
-  rust_log_oxbow_debug_level     = "info"
-  aws_s3_locking_provider        = "dynamodb"
-
-
-  dynamodb_table_name          = "test-oxbow-lock"
-  logstore_dynamodb_table_name = "test-delta-logstore"
-
+  # Deliberately none of the oxbow-only inputs: the whole point of this file is
+  # the configuration the README documents for a glue-only deployment. Setting
+  # them here is what let locals interpolating them past the suite once before.
+  rust_log_oxbow_debug_level = "info"
 }
 
 # oxbow = null turns the core stage off, so the module can deploy the auxiliary
@@ -61,6 +57,16 @@ run "everything_off_creates_nothing_but_still_plans" {
   assert {
     condition     = !anytrue(values(local.enabled))
     error_message = "With every config object null, no stage is enabled"
+  }
+
+  assert {
+    condition     = local.lock_table_arn == null && local.logstore_table_arn == null
+    error_message = "No stage uses a lock table here, so its ARN must not be built from a null name"
+  }
+
+  assert {
+    condition     = local.oxbow_environment == {}
+    error_message = "The oxbow environment must not be built when the stage is off"
   }
 
   assert {

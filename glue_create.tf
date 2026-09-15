@@ -61,7 +61,7 @@ module "glue_create_lambda" {
     ATHENA_WORKGROUP    = var.glue_create.athena_workgroup_name
     ATHENA_DATA_SOURCE  = var.glue_create.athena_data_source
     GLUE_PATH_REGEX     = var.glue_create.path_regex
-    UNWRAP_SNS_ENVELOPE = true
+    UNWRAP_SNS_ENVELOPE = "true"
   }
 
   role_name     = var.glue_create.iam_role_name
@@ -146,15 +146,9 @@ data "aws_iam_policy_document" "glue_create" {
   count = local.enabled.glue_create ? 1 : 0
 
   statement {
-    sid    = "AthenaWorkgroupAthenaRW"
-    effect = "Allow"
-    actions = [
-      "athena:StartQueryExecution",
-      "athena:GetQueryResults",
-      "athena:GetWorkGroup",
-      "athena:StopQueryExecution",
-      "athena:GetQueryExecution",
-    ]
+    sid       = "AthenaRunDDL"
+    effect    = "Allow"
+    actions   = local.athena_actions
     resources = [aws_athena_workgroup.glue_create[0].arn]
   }
 
@@ -173,32 +167,10 @@ data "aws_iam_policy_document" "glue_create" {
     ]
   }
 
-  # athena:ListWorkGroups is account-scoped and rejects a resource ARN, so "*"
-  # is the only form AWS accepts.
   statement {
-    sid       = "AthenaListWorkgroups"
+    sid       = "GlueCreateTablesAndDatabases"
     effect    = "Allow"
-    actions   = ["athena:ListWorkGroups"]
-    resources = ["*"]
-  }
-
-  statement {
-    sid    = "GlueAllowTables"
-    effect = "Allow"
-    actions = [
-      "glue:GetTable",
-      "glue:GetTables",
-      "glue:GetPartitions",
-      "glue:CreateTable",
-      "glue:UpdateTable",
-    ]
-    resources = local.glue_catalog_resources
-  }
-
-  statement {
-    sid       = "GlueCatalogAllowDatabases"
-    effect    = "Allow"
-    actions   = ["glue:GetDatabase", "glue:GetDatabases", "glue:CreateDatabase"]
+    actions   = local.glue_create_actions
     resources = local.glue_catalog_resources
   }
 
