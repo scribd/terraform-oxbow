@@ -10,14 +10,14 @@ locals {
   ]
 
   monitor_query_conditions = (
-    local.enabled.dl_monitoring && var.dead_letter_monitoring.query_conditions != ""
+    local.enabled.dead_letter_monitoring && var.dead_letter_monitoring.query_conditions != ""
     ? ", ${var.dead_letter_monitoring.query_conditions}"
     : ""
   )
 }
 
 resource "datadog_monitor" "dead_letters" {
-  for_each = local.enabled.dl_monitoring ? toset(local.dead_letter_queue_names) : toset([])
+  for_each = local.enabled.dead_letter_monitoring ? toset(local.dead_letter_queue_names) : toset([])
 
   type = "metric alert"
   name = "${each.key}-monitor"

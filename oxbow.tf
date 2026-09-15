@@ -45,11 +45,14 @@ module "oxbow_lambda" {
 
   use_existing_cloudwatch_log_group = !local.manage_log_group.oxbow
   cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
-  attach_policy_statements          = local.enabled.group_events
+
+  attach_create_log_group_permission = false
+
+  attach_policy_statements = local.enabled.group_events
   policy_statements = local.enabled.group_events ? {
     group_events_logs = {
       effect    = "Allow"
-      actions   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+      actions   = local.lambda_logs_actions
       resources = local.group_events_log_group_arns
     }
   } : {}

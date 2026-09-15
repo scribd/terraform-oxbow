@@ -38,8 +38,9 @@ module "auto_tagging_lambda" {
   attach_policy = true
   policy        = aws_iam_policy.auto_tagging[0].arn
 
-  use_existing_cloudwatch_log_group = !local.manage_log_group.auto_tagging
-  cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
+  use_existing_cloudwatch_log_group  = !local.manage_log_group.auto_tagging
+  attach_create_log_group_permission = false
+  cloudwatch_logs_retention_in_days  = var.cloudwatch_logs_retention_in_days
 
   event_source_mapping = {
     sqs = {
@@ -95,7 +96,7 @@ resource "aws_iam_policy" "auto_tagging" {
   count = local.enabled.auto_tagging ? 1 : 0
 
   name        = local.auto_tagging_policy
-  description = "Auto-tagging lambda access to the configured prefix, its queue and the Delta lock tables"
+  description = "Auto-tagging lambda access to tag objects under the configured prefix and consume its queue"
   policy      = data.aws_iam_policy_document.auto_tagging[0].json
   tags        = var.tags
 }

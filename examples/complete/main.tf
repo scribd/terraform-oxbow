@@ -52,11 +52,10 @@ module "oxbow" {
     role_name            = local.prefix
     policy_name          = local.prefix
     queue_name           = "${local.prefix}-queue"
-    dl_queue_name        = "${local.prefix}-queue-dl"
   }
 
   # With grouping on, S3 events land on queue_name and oxbow reads the FIFO
-  # queue this lambda feeds instead of its own.
+  # queue this lambda feeds instead of its own — so oxbow needs no dl_queue_name.
   group_events = {
     lambda_function_name = "${local.prefix}-group-events"
     lambda_s3_bucket     = local.artifacts

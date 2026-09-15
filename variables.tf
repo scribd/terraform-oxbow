@@ -45,7 +45,7 @@ variable "oxbow" {
     role_name            = string
     policy_name          = string
     queue_name           = string
-    dl_queue_name        = string
+    dl_queue_name        = optional(string)
     manage_log_group     = optional(bool)
   })
   description = <<-EOT
@@ -54,7 +54,8 @@ variable "oxbow" {
     role_name is the IAM role, shared with the group-events lambda when that
     stage is on, and policy_name its managed policy. queue_name is the ingest
     queue, used when the group_events stage is off; the auto-tagging stage
-    derives its own names from these unless it sets its own.
+    derives its own names from these unless it sets its own. dl_queue_name
+    names that queue's DLQ, so the group_events stage makes it unnecessary.
   EOT
   default     = null
 }
@@ -131,15 +132,16 @@ variable "manage_lambda_log_groups" {
   type        = bool
   description = <<-EOT
     Default for every stage: manage that lambda's CloudWatch log group with
-    OpenTofu, which gets you retention control and drops logs:CreateLogGroup
-    from the role. The logs policy is scoped to the one group either way -- with
-    false the lambda module reads the group's ARN with a data source. False
-    because a log group the Lambda service already created cannot be
-    created again, so true on an existing deployment fails mid-apply with
-    ResourceAlreadyExistsException; false reads the group with a data source
-    instead, which fails at plan if it does not exist yet. Neither state suits a
-    deployment that has some lambdas already and is adding another, so each stage
-    object can override this with its own manage_log_group.
+    OpenTofu, which gets you retention control. What it does not change is the
+    role, which carries logs:CreateLogStream and logs:PutLogEvents on that one
+    group either way -- never logs:CreateLogGroup, because the group exists
+    under both settings. False because a log group the Lambda service already
+    created cannot be created again, so true on an existing deployment fails
+    mid-apply with ResourceAlreadyExistsException; false reads the group with a
+    data source instead, which fails at plan if it does not exist yet. Neither
+    state suits a deployment that has some lambdas already and is adding
+    another, so each stage object can override this with its own
+    manage_log_group.
   EOT
   default     = false
 }
@@ -265,14 +267,6 @@ variable "sns_delivery" {
   }
 }
 
-################################################################################
-# Optional stages
-#
-# Every variable below gates one feature: null turns the stage off, a non-null
-# object turns it on and carries everything that stage needs. Required fields
-# are required by the type, so an enabled stage cannot be half-configured.
-################################################################################
-
 variable "s3_notifies_ingest_queue" {
   type        = bool
   description = <<-EOT
@@ -285,6 +279,14 @@ variable "s3_notifies_ingest_queue" {
   EOT
   default     = true
 }
+
+################################################################################
+# Optional stages
+#
+# Every variable below gates one feature: null turns the stage off, a non-null
+# object turns it on and carries everything that stage needs. Required fields
+# are required by the type, so an enabled stage cannot be half-configured.
+################################################################################
 
 variable "group_events" {
   type = object({

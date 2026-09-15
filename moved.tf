@@ -3,15 +3,14 @@
 # recreate of live queues, lambdas and the lock table. See UPGRADING.md for the
 # few resources that cannot be moved.
 
-################################################################################
 # Oxbow
 #
 # A `moved` source with no instance key must name the target *instance*, not the
 # resource: moving a keyless object onto a counted resource lands it at the
 # no-key address, and OpenTofu then destroys it. Sources that carried count in
 # the old layout keep their key across a whole-resource move, so those targets
-# are unindexed. scripts/check-moved-blocks.py enforces this.
-################################################################################
+# are unindexed. scripts/check-moved-blocks.py enforces this, and that every
+# target names a real address -- `tofu validate` accepts one that names nothing.
 
 moved {
   from = aws_lambda_function.this_lambda
@@ -48,9 +47,7 @@ moved {
   to   = aws_sns_topic_subscription.oxbow
 }
 
-################################################################################
 # Group events
-################################################################################
 
 moved {
   from = aws_lambda_function.group_events_lambda
@@ -82,9 +79,7 @@ moved {
   to   = module.oxbow_fifo_queue[0].aws_sqs_queue.dlq
 }
 
-################################################################################
 # Auto tagging
-################################################################################
 
 moved {
   from = aws_lambda_function.auto_tagging
@@ -116,9 +111,7 @@ moved {
   to   = module.auto_tagging_queue[0].aws_sqs_queue.dlq
 }
 
-################################################################################
 # Glue create
-################################################################################
 
 moved {
   from = aws_lambda_function.glue_create_lambda
@@ -160,9 +153,7 @@ moved {
   to   = aws_sns_topic_subscription.glue_create
 }
 
-################################################################################
 # Glue sync
-################################################################################
 
 moved {
   from = aws_lambda_function.glue_sync_lambda
@@ -204,23 +195,20 @@ moved {
   to   = aws_sns_topic_subscription.glue_sync
 }
 
-################################################################################
 # Monitoring
-################################################################################
 
 moved {
   from = datadog_monitor.dead_letters_monitor
   to   = datadog_monitor.dead_letters
 }
 
-################################################################################
 # Dropped from this module's scope
 #
-# Both resources stay in AWS and keep running; OpenTofu just stops tracking
-# them. Without `destroy = false` the upgrade would delete a live Delta lock
-# table and wipe a bucket's entire notification configuration. Adopt both in
-# the calling configuration -- see UPGRADING.md.
-################################################################################
+# All three stay in AWS and keep running; OpenTofu just stops tracking them.
+# Without `destroy = false` the upgrade would delete a live Delta lock table and
+# wipe a bucket's entire notification configuration. Adopt the lock table and the
+# notification in the calling configuration; the Glue table is Firehose-era and
+# adopted by nobody -- see UPGRADING.md.
 
 removed {
   from = aws_glue_catalog_table.this_glue_table

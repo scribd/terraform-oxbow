@@ -34,7 +34,7 @@ fields are required by the object type, so a stage cannot be half-configured.
 
 | Variable | null | non-null creates |
 | --- | --- | --- |
-| `oxbow` | no lambda, no ingest queue | the oxbow lambda, its ingest queue and DLQ, its role and policy |
+| `oxbow` | no lambda, no ingest queue | the oxbow lambda, its role and policy, and — unless `group_events` supplies them — its ingest queue and DLQ |
 | `group_events` | oxbow reads its own queue | group-events lambda, its standard queue, the FIFO queue oxbow then reads |
 | `auto_tagging` | — | auto-tagging lambda, queue, own IAM role |
 | `glue_create` | — | glue-create lambda, queue, Athena workgroup and results bucket |
@@ -211,6 +211,7 @@ leaves all four unset:
 | --- | --- |
 | `dynamodb_table_name`, `logstore_dynamodb_table_name` | `oxbow` is set |
 | `aws_s3_locking_provider`, `rust_log_deltalake_debug_level` | `oxbow` is set |
+| `oxbow.dl_queue_name` | `oxbow` is set and `group_events` is not |
 
 Everything else is a stage object (null-gated, above) or a tunable with a
 default:
@@ -237,9 +238,11 @@ default:
 ## Lambda log groups
 
 `manage_lambda_log_groups` has each lambda's CloudWatch log group created by
-OpenTofu, which gets you retention control and drops `logs:CreateLogGroup` from
-the role. The logs policy is scoped to that one group either way — with `false`
-the lambda module reads its ARN with a data source. It defaults to **`false`**
+OpenTofu, which gets you retention control. It does not change the role: that
+carries `logs:CreateLogStream` and `logs:PutLogEvents` on the one group either
+way, and never `logs:CreateLogGroup` — the group exists under both settings, so
+nothing can use it. With `false` the lambda module reads the group's ARN with a
+data source instead of creating it. It defaults to **`false`**
 because a log group the Lambda
 service already created cannot be created again — `true` on an existing
 deployment fails mid-apply with `ResourceAlreadyExistsException`, while `false`
@@ -287,10 +290,13 @@ It covers the feature gates, the event-delivery wiring, the derived names and
 their limits, the policy defects found while auditing the rewrite, and the input
 validations.
 
-`check-moved-blocks.py` guards the two state-move mistakes that destroy live
-infrastructure — a `moved` source with no instance key targeting a whole counted
-resource, and a `removed` block missing `destroy = false`. Neither is reachable
-from `tofu test`, because state moves only manifest against real prior state.
+`check-moved-blocks.py` guards the state-move mistakes that destroy live
+infrastructure: a `moved` source with no instance key targeting a whole counted
+resource, a target that names nothing or carries an index that is not an address,
+a `removed` block missing `destroy = false`, and a pre-rewrite resource with no
+block at all. `tofu validate` accepts every one of those, and `tofu test` cannot
+see them, because state moves only manifest against real prior state.
+`scripts/prior-resources.txt` is the frozen v1.0.9 inventory it checks against.
 
 ##
 Made with ❤️ by the Platform Infra Team.

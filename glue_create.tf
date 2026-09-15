@@ -68,8 +68,9 @@ module "glue_create_lambda" {
   attach_policy = true
   policy        = aws_iam_policy.glue_create[0].arn
 
-  use_existing_cloudwatch_log_group = !local.manage_log_group.glue_create
-  cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
+  use_existing_cloudwatch_log_group  = !local.manage_log_group.glue_create
+  attach_create_log_group_permission = false
+  cloudwatch_logs_retention_in_days  = var.cloudwatch_logs_retention_in_days
 
   event_source_mapping = {
     sqs = {
@@ -93,20 +94,8 @@ module "glue_create_queue" {
   delay_seconds              = var.sqs_delay_seconds
   sqs_managed_sse_enabled    = var.sqs_managed_sse_enabled
 
-  create_queue_policy = true
-  queue_policy_statements = {
-    sns_send = {
-      sid        = "SnsSendMessage"
-      effect     = "Allow"
-      actions    = ["sqs:SendMessage"]
-      principals = [{ type = "Service", identifiers = ["sns.amazonaws.com"] }]
-      condition = [{
-        test     = "ArnEquals"
-        variable = "aws:SourceArn"
-        values   = [var.glue_create.sns_topic_arn]
-      }]
-    }
-  }
+  create_queue_policy     = true
+  queue_policy_statements = local.glue_queue_policy_statements["glue_create"]
 
   create_dlq                     = true
   dlq_name                       = var.glue_create.sqs_queue_name_dl

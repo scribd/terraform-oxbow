@@ -131,7 +131,7 @@ run "over_length_lambda_name_fails_at_plan" {
       dl_queue_name        = "test-oxbow-queue-dl"
     }
   }
-  expect_failures = [terraform_data.name_length_guard]
+  expect_failures = [terraform_data.config_guard]
 }
 
 run "over_length_derived_auto_tagging_name_fails_at_plan" {
@@ -152,7 +152,7 @@ run "over_length_derived_auto_tagging_name_fails_at_plan" {
       lambda_s3_key    = "auto-tagging/auto-tagging.zip"
     }
   }
-  expect_failures = [terraform_data.name_length_guard]
+  expect_failures = [terraform_data.config_guard]
 }
 
 run "over_length_sqs_name_fails_at_plan" {
@@ -168,7 +168,7 @@ run "over_length_sqs_name_fails_at_plan" {
       dl_queue_name        = "test-oxbow-queue-dl"
     }
   }
-  expect_failures = [terraform_data.name_length_guard]
+  expect_failures = [terraform_data.config_guard]
 }
 
 run "over_length_athena_bucket_name_is_rejected" {
@@ -264,15 +264,26 @@ run "same_account_deny_exempts_aws_services" {
   assert {
     condition = anytrue([
       for c in local.same_account_only_statements["deny_outside_account"].condition :
-      c.variable == "aws:PrincipalAccount" && c.test == "StringNotEquals"
+      c.variable == "aws:PrincipalAccount" && c.test == "StringNotEqualsIfExists"
     ])
     error_message = "The deny must key off the calling account"
+  }
+
+  # Conditions are ANDed, so a plain Bool on a key the request does not carry
+  # evaluates false and takes the whole deny with it. An unsigned request
+  # carries neither key.
+  assert {
+    condition = alltrue([
+      for c in local.same_account_only_statements["deny_outside_account"].condition :
+      endswith(c.test, "IfExists")
+    ])
+    error_message = "Every condition on a deny must use an IfExists form or the deny goes inert on an absent key"
   }
 }
 
 # delta-rs documents exactly these actions for the DynamoDB logstore. Table
-# creation is not among them: this module creates the lock table, and the
-# logstore table is a pre-existing input.
+# creation is not among them: both tables are pre-existing inputs this module
+# is only pointed at.
 run "dynamodb_grant_matches_the_documented_delta_rs_set" {
   command = plan
 
@@ -294,25 +305,170 @@ run "dynamodb_grant_matches_the_documented_delta_rs_set" {
   }
 }
 
-run "no_identity_policy_action_uses_a_wildcard" {
+# Asserted against the rendered documents, not the action locals: the earlier
+# version of this swept five locals and so could not see the statements written
+# inline in oxbow.tf, autotagging.tf and glue_create.tf, where "s3:*" would
+# have passed the whole suite.
+run "no_identity_policy_statement_uses_a_wildcard" {
   command = plan
 
+  variables {
+    auto_tagging = {
+      lambda_s3_bucket = "test-artifacts"
+      lambda_s3_key    = "auto-tagging/auto-tagging.zip"
+    }
+
+    glue_create = {
+      athena_workgroup_name = "test-glue-create"
+      athena_data_source    = "AwsDataCatalog"
+      athena_bucket_name    = "test-glue-create-athena"
+      lambda_s3_bucket      = "test-artifacts"
+      lambda_s3_key         = "glue-create/glue-create.zip"
+      lambda_function_name  = "test-glue-create"
+      sns_topic_arn         = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      sqs_queue_name        = "test-glue-create-queue"
+      sqs_queue_name_dl     = "test-glue-create-queue-dl"
+      iam_role_name         = "test-glue-create-role"
+      iam_policy_name       = "test-glue-create-policy"
+    }
+
+    glue_sync = {
+      lambda_s3_bucket     = "test-artifacts"
+      lambda_s3_key        = "glue-sync/glue-sync.zip"
+      lambda_function_name = "test-glue-sync"
+      sns_topic_arn        = "arn:aws:sns:us-east-2:123456789012:warehouse-events"
+      sqs_queue_name       = "test-glue-sync-queue"
+      sqs_queue_name_dl    = "test-glue-sync-queue-dl"
+      iam_role_name        = "test-glue-sync-role"
+      iam_policy_name      = "test-glue-sync-policy"
+    }
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for doc in concat(
+        data.aws_iam_policy_document.oxbow_lambda,
+        data.aws_iam_policy_document.auto_tagging,
+        data.aws_iam_policy_document.glue_create,
+        data.aws_iam_policy_document.glue_sync,
+      ) : [for st in doc.statement : [for a in st.actions : !endswith(a, ":*") && a != "*"]]
+    ]))
+    error_message = "Identity-policy actions must be enumerated, never service:* or *"
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for doc in concat(
+        data.aws_iam_policy_document.oxbow_lambda,
+        data.aws_iam_policy_document.auto_tagging,
+        data.aws_iam_policy_document.glue_create,
+        data.aws_iam_policy_document.glue_sync,
+      ) : [for st in doc.statement : [for r in st.resources : r != "*"]]
+    ]))
+    error_message = "No identity-policy statement may name Resource \"*\""
+  }
+
+  # Proves the sweep is looking at something: four documents, none empty.
   assert {
     condition = alltrue([
-      for a in concat(
-        local.expected_dynamodb_actions,
-        local.sqs_consumer_actions,
-        local.glue_sync_actions,
-        local.glue_create_actions,
-        local.athena_actions,
-      ) : !endswith(a, ":*")
-    ])
-    error_message = "Identity-policy actions must be enumerated, never service:*"
+      for doc in concat(
+        data.aws_iam_policy_document.oxbow_lambda,
+        data.aws_iam_policy_document.auto_tagging,
+        data.aws_iam_policy_document.glue_create,
+        data.aws_iam_policy_document.glue_sync,
+      ) : length(doc.statement) > 0
+    ]) && length(data.aws_iam_policy_document.oxbow_lambda[0].statement) == 4
+    error_message = "The sweep must see every statement of all four policy documents"
   }
 
   assert {
     condition     = !contains(local.sqs_consumer_actions, "sqs:SendMessage")
     error_message = "A queue consumer has no business sending; the FIFO producer grant is separate"
+  }
+}
+
+# The lambda module grants CreateLogGroup exactly when OpenTofu manages the
+# group, i.e. when it has already created it -- so it is dead either way, and
+# the hand-rolled statement for the shared role must not reintroduce it.
+run "no_role_can_create_a_log_group" {
+  command = plan
+
+  assert {
+    condition     = !contains(local.lambda_logs_actions, "logs:CreateLogGroup")
+    error_message = "The group exists under both settings, so no role needs logs:CreateLogGroup"
+  }
+
+  assert {
+    condition     = toset(local.lambda_logs_actions) == toset(["logs:CreateLogStream", "logs:PutLogEvents"])
+    error_message = "The logs grant is exactly stream creation and writing"
+  }
+}
+
+# The glue queues' policies were written inline in their module calls, where no
+# assertion could reach them.
+run "no_glue_queue_policy_allows_a_wildcard_principal" {
+  command = plan
+
+  variables {
+    glue_create = {
+      athena_workgroup_name = "test-glue-create"
+      athena_data_source    = "AwsDataCatalog"
+      athena_bucket_name    = "test-glue-create-athena"
+      lambda_s3_bucket      = "test-artifacts"
+      lambda_s3_key         = "glue-create/glue-create.zip"
+      lambda_function_name  = "test-glue-create"
+      sns_topic_arn         = "arn:aws:sns:us-east-2:123456789012:glue-create-events"
+      sqs_queue_name        = "test-glue-create-queue"
+      sqs_queue_name_dl     = "test-glue-create-queue-dl"
+      iam_role_name         = "test-glue-create-role"
+      iam_policy_name       = "test-glue-create-policy"
+    }
+
+    glue_sync = {
+      lambda_s3_bucket     = "test-artifacts"
+      lambda_s3_key        = "glue-sync/glue-sync.zip"
+      lambda_function_name = "test-glue-sync"
+      sns_topic_arn        = "arn:aws:sns:us-east-2:123456789012:glue-sync-events"
+      sqs_queue_name       = "test-glue-sync-queue"
+      sqs_queue_name_dl    = "test-glue-sync-queue-dl"
+      iam_role_name        = "test-glue-sync-role"
+      iam_policy_name      = "test-glue-sync-policy"
+    }
+  }
+
+  assert {
+    condition     = length(local.glue_queue_policy_statements) == 2
+    error_message = "Both glue stages must contribute a queue policy for this sweep to mean anything"
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for stage in local.glue_queue_policy_statements : [
+        for st in stage : [
+          for p in st.principals : !(st.effect == "Allow" && contains(p.identifiers, "*"))
+        ]
+      ]
+    ]))
+    error_message = "A glue queue policy names a wildcard principal on an Allow"
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for stage in local.glue_queue_policy_statements : [
+        for st in stage : [for a in st.actions : !endswith(a, ":*")]
+      ]
+    ]))
+    error_message = "A glue queue policy grants a wildcard action"
+  }
+
+  # Each stage subscribes to its own topic, so a shared statement would admit
+  # the other stage's topic to both queues.
+  assert {
+    condition = (
+      local.glue_queue_policy_statements["glue_create"]["sns_send"].condition[0].values == ["arn:aws:sns:us-east-2:123456789012:glue-create-events"] &&
+      local.glue_queue_policy_statements["glue_sync"]["sns_send"].condition[0].values == ["arn:aws:sns:us-east-2:123456789012:glue-sync-events"]
+    )
+    error_message = "Each glue queue policy must be scoped to that stage's own topic"
   }
 }
 
@@ -656,12 +812,15 @@ run "no_queue_ever_gets_an_empty_policy" {
 # reaches 14 days by coalescing from the primary queue. It is passed explicitly
 # so the DLQs do not silently fall back to the AWS 4-day default if that
 # coalesce ever changes.
+# Only the default is assertable here: the value reaches each DLQ through the
+# sqs module, which exposes no retention output, so that wiring is verifiable
+# on a real plan and nowhere else.
 run "retention_defaults_to_the_sqs_maximum" {
   command = plan
 
   assert {
     condition     = var.message_retention_seconds == 1209600
-    error_message = "Every queue should retain for 14 days, the SQS maximum"
+    error_message = "The default must be 14 days, the SQS maximum, not the AWS 4-day fallback"
   }
 }
 

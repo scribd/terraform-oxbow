@@ -22,7 +22,9 @@ changes below.
   v1.0.4 and carrying no `removed` block. `scribd/terraform-payments` pins
   `v1.0.3` and still passes `lambda_kinesis_role_name`, so it is the one
   affected; upgrade it to v1.0.9 first, or read its plan for destroys outside
-  the list below.
+  the list below. The same applies to `v1.1` and `v1.2`: they sort above
+  `v1.0.9` under semver but point at January 2024 commits that predate the glue
+  stages, so a caller pinned to either is on a pre-rewrite tree too.
 
 ## Three resources leave this module's scope
 
@@ -136,8 +138,12 @@ as inline attributes or did not have at all.
 - `aws_iam_role_policy_attachment` replacing the removed `managed_policy_arns`.
   The policy is already attached in AWS, so the create is a no-op there.
 - `aws_iam_role_policy` carrying the scoped CloudWatch Logs grant.
-- `terraform_data.name_length_guard`, which holds the plan-time name length
-  checks.
+- `terraform_data.config_guard`, which holds the plan-time name length and
+  cross-stage config checks.
+- `terraform_data.package_filename_for_hash[0]` inside each enabled lambda
+  stage, up to five. The lambda module creates it whenever
+  `ignore_source_code_hash` is false, its default; with `create_package = false`
+  it resolves to a null filename and does nothing.
 - With `auto_tagging` and `dead_letter_monitoring` both set, one new Datadog
   monitor: the auto-tagging DLQ was previously unmonitored.
 
@@ -179,6 +185,13 @@ as inline attributes or did not have at all.
   `true`). This is an in-place attribute change, costs nothing, and does not
   affect S3 or SNS delivery. Set the variable to `false` to keep queues
   unencrypted.
+- **`force_detach_policies` flips `false` → `true` on every IAM role that moves
+  into the lambda module**, which sets it by default where the raw resources did
+  not. It changes nothing in AWS until a role is destroyed.
+- **The vendored `s3-bucket` module behind the glue-create Athena results bucket
+  jumps 4.1.2 → 5.15.4.** No resource address is orphaned across that bump, so
+  nothing is destroyed and no `moved` block is needed, but it is a major version
+  and worth reading the plan for.
 
 ## Removed: the S3 invoke permissions
 
@@ -372,6 +385,9 @@ Other input changes:
 - `auto_tagging` gains optional `function_name` / `role_name` / `policy_name` /
   `queue_name` / `dl_queue_name`. Omit them and the derived names are unchanged;
   they are required only when `oxbow = null`.
+- `oxbow.dl_queue_name` is optional when `group_events` is on, since the
+  grouping stage brings its own queues and that DLQ is never created. Setting it
+  anyway is harmless; leaving it out with grouping off fails at plan.
 - `group_events.timeout` / `.memory_size` are new. `lambda_timeout` and
   `lambda_memory_size` never applied to the group-events lambda — it ran on the
   lambda module's defaults of 3s and 128MB, which these now carry explicitly.
@@ -379,7 +395,8 @@ Other input changes:
 Outputs `lambda_arn`, `sqs_queue_arn`, `autotag_sqs_arn`, `autotag_lambda` and
 `dead_letters_monitor_ids` keep their names and meaning. New:
 `ingest_queue_arn`, `dead_letter_queue_arns`, `lambda_role_arn`,
-`dynamodb_lock_table_arn`, `enabled_stages`.
+`dynamodb_lock_table_arn`, `enabled_stages`. `enabled_stages` is keyed by
+variable name, so index it with `dead_letter_monitoring`, not `dl_monitoring`.
 
 Because the feature gates and the stage objects both changed, there is no
 deprecation window — this is a major version.
