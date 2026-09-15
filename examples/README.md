@@ -1,8 +1,8 @@
 # Examples
 
-Each directory is a runnable root module against `../../`. They exist to be
-validated in CI, so an interface change that breaks a caller fails the build
-rather than the next upgrade.
+Each directory is a runnable root module against `../../`. Validating them is
+how an interface change that breaks a caller gets caught here rather than at
+someone's next upgrade, so run them after touching `variables.tf`.
 
 | Example | Shape |
 | --- | --- |
@@ -12,13 +12,11 @@ rather than the next upgrade.
 | [glue-only](glue-only/) | `oxbow = null` — catalog upkeep for Delta tables something else writes |
 
 ```
-cd examples/minimal
-tofu init -backend=false
-tofu validate
+for d in examples/*/; do (cd "$d" && tofu init -backend=false && tofu validate); done
 ```
 
-They are not applied in CI and the account ids, buckets and topic ARNs are
-placeholders, so `tofu plan` against them needs real values.
+The account ids, buckets and topic ARNs are placeholders, so `tofu validate` is
+as far as they go without real values.
 
 ## What the caller owns
 

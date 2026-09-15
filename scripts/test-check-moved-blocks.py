@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fixtures for check-moved-blocks.py. It guards a destroy-live-resources
-failure mode that nothing else in CI can see, so it needs its own tests."""
+failure mode nothing else checks, so it needs its own tests."""
 
 import pathlib
 import subprocess

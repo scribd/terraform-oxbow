@@ -254,21 +254,30 @@ another, so all five stage objects take their own `manage_log_group` override:
 ## Examples
 
 [`examples/`](examples/) has a runnable root module per deployment shape —
-`minimal`, `sns-delivery`, `complete` and `glue-only` — each validated in CI.
-They also show the caller's side of what this module does not own: the two
-DynamoDB lock tables and, where used, the bucket notification.
+`minimal`, `sns-delivery`, `complete` and `glue-only`. They also show the
+caller's side of what this module does not own: the two DynamoDB lock tables
+and, where used, the bucket notification.
 
-## Tests
+## Checks
+
+This repo has no CI. Run these before opening a pull request:
 
 ```
-tofu init -backend=false
-tofu test
+tofu fmt -check -recursive
+tofu init -backend=false && tofu validate && tofu test
+python3 scripts/test-check-moved-blocks.py && python3 scripts/check-moved-blocks.py
+for d in examples/*/; do (cd "$d" && tofu init -backend=false && tofu validate); done
 ```
 
-Both providers are mocked, so the suite needs no AWS or Datadog credentials and
-runs on every push. It covers the feature gates, the event-delivery wiring, the
-derived names and their limits, the policy defects found while auditing the
-rewrite, and the input validations.
+Both providers are mocked, so `tofu test` needs no AWS or Datadog credentials.
+It covers the feature gates, the event-delivery wiring, the derived names and
+their limits, the policy defects found while auditing the rewrite, and the input
+validations.
+
+`check-moved-blocks.py` guards the two state-move mistakes that destroy live
+infrastructure — a `moved` source with no instance key targeting a whole counted
+resource, and a `removed` block missing `destroy = false`. Neither is reachable
+from `tofu test`, because state moves only manifest against real prior state.
 
 ##
 Made with ❤️ by the Platform Infra Team.
