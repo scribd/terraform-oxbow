@@ -41,7 +41,6 @@ module "glue_sync_lambda" {
       event_source_arn = module.glue_sync_queue[0].queue_arn
     }
   }
-  create_current_version_allowed_triggers = false
 
   tags = var.tags
 }
@@ -89,8 +88,9 @@ resource "aws_sns_topic_subscription" "glue_sync" {
 resource "aws_iam_policy" "glue_sync" {
   count = local.enabled.glue_sync ? 1 : 0
 
-  name        = var.glue_sync.iam_policy_name
-  description = "Glue sync policy allows access to Glue and the configured prefix"
+  name = var.glue_sync.iam_policy_name
+  # Verbatim from v1.0.9, "create" and all: the description is ForceNew.
+  description = "Glue create policy allows access to Athena and S3"
   policy      = data.aws_iam_policy_document.glue_sync[0].json
   tags        = var.tags
 }

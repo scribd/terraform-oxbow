@@ -24,8 +24,7 @@ locals {
   fifo_queue_name = local.enabled.group_events ? "${trimsuffix(var.group_events.fifo_queue_name, ".fifo")}.fifo" : ""
   fifo_dlq_name   = local.enabled.group_events ? "${trimsuffix(var.group_events.fifo_dl_queue_name, ".fifo")}.fifo" : ""
 
-  # Grouping moves the queue oxbow consumes and the queue S3 delivers to apart:
-  # oxbow reads the FIFO queue, deliveries land on the group-events queue.
+  # Under grouping, oxbow reads the FIFO queue and deliveries land on group-events.
   oxbow_standard_queue = local.enabled.oxbow && !local.enabled.group_events
 
   oxbow_source_queue_name = local.enabled.group_events ? local.fifo_queue_name : (local.enabled.oxbow ? var.oxbow.queue_name : null)
@@ -230,7 +229,8 @@ locals {
       "oxbow.lambda_function_name (Lambda, 64)" = [var.oxbow.lambda_function_name, 64]
       "oxbow.queue_name (SQS, 80)"              = [var.oxbow.queue_name, 80]
     } : {},
-    local.oxbow_standard_queue ? {
+    # Null is config_guard's business: length(null) here buries its message.
+    local.oxbow_standard_queue && var.oxbow.dl_queue_name != null ? {
       "oxbow.dl_queue_name (SQS, 80)" = [var.oxbow.dl_queue_name, 80]
     } : {},
     local.enabled.group_events ? {

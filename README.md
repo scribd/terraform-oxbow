@@ -293,9 +293,11 @@ validations.
 `check-moved-blocks.py` guards the state-move mistakes that destroy live
 infrastructure: a `moved` source with no instance key targeting a whole counted
 resource, a target that names nothing or carries an index that is not an address,
-a `removed` block missing `destroy = false`, and a pre-rewrite resource with no
-block at all. `tofu validate` accepts every one of those, and `tofu test` cannot
-see them, because state moves only manifest against real prior state.
+two targets colliding, a `removed` block missing `destroy = false`, and a
+pre-rewrite resource with no block at all. `tofu validate` accepts every one of
+those, and `tofu test` cannot see them, because state moves only manifest against
+real prior state. Most targets point inside a vendored module, so it resolves them
+through `.terraform/modules/modules.json` and needs `tofu init` to have run.
 `scripts/prior-resources.txt` is the frozen v1.0.9 inventory it checks against.
 
 ##

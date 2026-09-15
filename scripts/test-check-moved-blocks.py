@@ -3,6 +3,7 @@
 failure mode nothing else checks -- `tofu validate` accepts every one of the
 rejected cases below -- so it needs its own tests."""
 
+import json
 import pathlib
 import subprocess
 import sys
@@ -29,6 +30,30 @@ resource "aws_sqs_queue" "counted" {
 
 resource "aws_sqs_queue" "solo" {
   name = "solo"
+}
+"""
+
+# Stands in for a vendored module, so the in-module half of a target is
+# resolvable the way it is against .terraform/modules in the real tree.
+CHILD = """
+resource "aws_lambda_function" "this" {
+  count = 1
+}
+
+resource "aws_iam_role" "lambda" {
+  count = 1
+}
+
+resource "aws_lambda_event_source_mapping" "this" {
+  for_each = var.mappings
+}
+
+resource "aws_sqs_queue" "this" {
+  count = 1
+}
+
+resource "aws_sqs_queue" "dlq" {
+  count = 1
 }
 """
 
@@ -149,6 +174,39 @@ moved {
 }
 ''', KEYED + "unkeyed aws_lambda_permission.auto_tagging\n", 0),
 
+    # The module head can be perfectly valid while the resource inside it is a
+    # typo. This is the shape 30 of the 36 real targets take, and the shape that
+    # destroyed the live lambda once already.
+    ("an in-module resource typo is rejected", '''
+moved {
+  from = aws_sqs_queue.keyed_in_prior
+  to   = module.m[0].aws_sqs_queue.thsi
+}
+''', KEYED, 1),
+    ("an index on an uncounted in-module resource is rejected", '''
+moved {
+  from = aws_sqs_queue.keyed_in_prior
+  to   = module.m[0].aws_lambda_event_source_mapping.this[0]
+}
+''', KEYED, 1),
+    ("a for_each key on an in-module resource is accepted", '''
+moved {
+  from = aws_sqs_queue.keyed_in_prior
+  to   = module.m[0].aws_lambda_event_source_mapping.this["sqs"]
+}
+''', KEYED, 0),
+    ("two blocks sharing one target are rejected", '''
+moved {
+  from = aws_sqs_queue.keyed_in_prior
+  to   = module.m[0].aws_sqs_queue.this
+}
+
+moved {
+  from = aws_sqs_queue.also_keyed
+  to   = module.m[0].aws_sqs_queue.this
+}
+''', KEYED + "keyed   aws_sqs_queue.also_keyed\n", 1),
+
     ("no blocks anywhere errors rather than passing vacuously", "# nothing here\n", KEYED, 1),
     ("an empty prior list errors rather than passing vacuously", '''
 moved {
@@ -164,6 +222,29 @@ moved {
 ''', "aws_sqs_queue.no_flag_column\n", 1),
 ]
 
+# A `dynamic` block's for_each must not make its enclosing resource look
+# counted, or hazard 3 stops firing for that resource.
+NESTED_DYNAMIC_DECLARATIONS = DECLARATIONS + """
+resource "aws_sqs_queue" "tagged_only" {
+  name = "tagged"
+
+  dynamic "tag" {
+    for_each = var.tags
+
+    content {
+      key = tag.value
+    }
+  }
+}
+"""
+
+NESTED_DYNAMIC_CASE = ('''
+moved {
+  from = aws_sqs_queue.keyed_in_prior
+  to   = aws_sqs_queue.tagged_only[0]
+}
+''', KEYED, 1)
+
 # A block in any .tf file counts, so the guard must not read moved.tf alone.
 STRAY_FILE_CASE = ('''
 moved {
@@ -173,12 +254,23 @@ moved {
 ''', UNKEYED, 1)
 
 
-def run(blocks, prior, blocks_filename="moved.tf"):
+def run(blocks, prior, blocks_filename="moved.tf", declarations=DECLARATIONS):
     with tempfile.TemporaryDirectory() as d:
         d = pathlib.Path(d)
-        (d / "declarations.tf").write_text(DECLARATIONS)
+        (d / "declarations.tf").write_text(declarations)
         (d / blocks_filename).write_text(blocks)
         (d / "prior.txt").write_text(prior)
+
+        modules = d / ".terraform" / "modules"
+        for name in ("m", "plain"):
+            (modules / name).mkdir(parents=True)
+            (modules / name / "main.tf").write_text(CHILD)
+        (modules / "modules.json").write_text(json.dumps({"Modules": [
+            {"Key": "", "Source": "", "Dir": "."},
+            {"Key": "m", "Source": "./m", "Dir": ".terraform/modules/m"},
+            {"Key": "plain", "Source": "./plain", "Dir": ".terraform/modules/plain"},
+        ]}))
+
         return subprocess.run(
             [sys.executable, str(GUARD)],
             capture_output=True, text=True,
@@ -189,15 +281,22 @@ def run(blocks, prior, blocks_filename="moved.tf"):
 
 def main():
     failures = 0
-    cases = [(n, b, p, w, "moved.tf") for n, b, p, w in CASES]
+    cases = [(n, b, p, w, "moved.tf", DECLARATIONS) for n, b, p, w in CASES]
+
     blocks, prior, want = STRAY_FILE_CASE
     cases.append(
         ("a block in a file other than moved.tf is still checked",
-         blocks, prior, want, "oxbow.tf")
+         blocks, prior, want, "oxbow.tf", DECLARATIONS)
     )
 
-    for name, blocks, prior, want, filename in cases:
-        r = run(blocks, prior, filename)
+    blocks, prior, want = NESTED_DYNAMIC_CASE
+    cases.append(
+        ("a nested dynamic for_each does not make its resource look counted",
+         blocks, prior, want, "moved.tf", NESTED_DYNAMIC_DECLARATIONS)
+    )
+
+    for name, blocks, prior, want, filename, declarations in cases:
+        r = run(blocks, prior, filename, declarations)
         ok = r.returncode == want
         failures += 0 if ok else 1
         print(f"{'ok  ' if ok else 'FAIL'}  {name} (exit {r.returncode}, want {want})")

@@ -137,7 +137,9 @@ as inline attributes or did not have at all.
   own source queue; previously they accepted redrive from any queue.
 - `aws_iam_role_policy_attachment` replacing the removed `managed_policy_arns`.
   The policy is already attached in AWS, so the create is a no-op there.
-- `aws_iam_role_policy` carrying the scoped CloudWatch Logs grant.
+- `aws_iam_role_policy` carrying the scoped CloudWatch Logs grant, named
+  `<role_name>-logs`. With `group_events` on, the shared oxbow role gains a
+  **second** one, `<role_name>-inline`, holding the group-events log grant.
 - `terraform_data.config_guard`, which holds the plan-time name length and
   cross-stage config checks.
 - `terraform_data.package_filename_for_hash[0]` inside each enabled lambda
@@ -188,6 +190,10 @@ as inline attributes or did not have at all.
 - **`force_detach_policies` flips `false` → `true` on every IAM role that moves
   into the lambda module**, which sets it by default where the raw resources did
   not. It changes nothing in AWS until a role is destroyed.
+- **The oxbow and auto-tagging IAM policies gain `tags`**; neither carried any
+  in v1.0.9. Their `description` is deliberately unchanged — it is ForceNew, and
+  the destroy half does not detach first, so editing it replaces the policy and
+  then fails on `DeleteConflict`. Leave those four strings alone.
 - **The vendored `s3-bucket` module behind the glue-create Athena results bucket
   jumps 4.1.2 → 5.15.4.** No resource address is orphaned across that bump, so
   nothing is destroyed and no `moved` block is needed, but it is a major version

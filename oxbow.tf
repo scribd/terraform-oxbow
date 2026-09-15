@@ -57,12 +57,14 @@ module "oxbow_lambda" {
     }
   } : {}
 
+  # The lambda module gates this on create_unqualified_alias_allowed_triggers,
+  # despite the name. Setting that false deletes every stage's SQS mapping and
+  # stops the pipeline; it is left at its default everywhere for that reason.
   event_source_mapping = {
     sqs = {
       event_source_arn = local.oxbow_source_queue_arn
     }
   }
-  create_current_version_allowed_triggers = false
 
   tags = var.tags
 }
@@ -98,10 +100,12 @@ module "oxbow_queue" {
 resource "aws_iam_policy" "oxbow_lambda" {
   count = local.enabled.oxbow ? 1 : 0
 
-  name        = var.oxbow.policy_name
-  description = "Oxbow lambda access to the configured prefix, its queues and the Delta lock tables"
-  policy      = data.aws_iam_policy_document.oxbow_lambda[0].json
-  tags        = var.tags
+  # aws_iam_policy.description is ForceNew and the destroy does not detach
+  # first, so changing it replaces the policy and then fails on DeleteConflict.
+  # These four strings must stay byte-identical to v1.0.9; see UPGRADING.
+  name   = var.oxbow.policy_name
+  policy = data.aws_iam_policy_document.oxbow_lambda[0].json
+  tags   = var.tags
 }
 
 data "aws_iam_policy_document" "oxbow_lambda" {

@@ -171,6 +171,32 @@ run "over_length_sqs_name_fails_at_plan" {
   expect_failures = [terraform_data.config_guard]
 }
 
+# The guard once measured dl_queue_name before checking it for null, so this
+# configuration died on length(null) in locals.tf and the precondition's own
+# message was never reached.
+run "dl_queue_name_is_required_when_grouping_is_off" {
+  command = plan
+  variables {
+    oxbow = {
+      lambda_function_name = "test-oxbow"
+      lambda_s3_bucket     = "test-artifacts"
+      lambda_s3_key        = "oxbow/oxbow-lambda.zip"
+      role_name            = "test-oxbow-role"
+      policy_name          = "test-oxbow-policy"
+      queue_name           = "test-oxbow-queue"
+    }
+  }
+  expect_failures = [terraform_data.config_guard]
+}
+
+run "empty_s3_path_is_rejected" {
+  command = plan
+  variables {
+    s3_path = ""
+  }
+  expect_failures = [var.s3_path]
+}
+
 run "over_length_athena_bucket_name_is_rejected" {
   command = plan
   variables {
@@ -351,9 +377,9 @@ run "no_identity_policy_statement_uses_a_wildcard" {
         data.aws_iam_policy_document.auto_tagging,
         data.aws_iam_policy_document.glue_create,
         data.aws_iam_policy_document.glue_sync,
-      ) : [for st in doc.statement : [for a in st.actions : !endswith(a, ":*") && a != "*"]]
+      ) : [for st in doc.statement : [for a in st.actions : !strcontains(a, "*")]]
     ]))
-    error_message = "Identity-policy actions must be enumerated, never service:* or *"
+    error_message = "Identity-policy actions must be enumerated -- no *, service:* or partial glob"
   }
 
   assert {

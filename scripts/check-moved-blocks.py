@@ -11,16 +11,22 @@ at all still passes `tofu validate`:
    against OpenTofu 1.12.6: the indexed form moves in place, the unindexed form
    plans `1 to add, 1 to destroy`.
 
-2. A `moved` target that names no resource or module in the configuration --
-   a typo, or a rename that was not carried through. The state object lands at
-   an address nothing declares, so it is destroyed.
+2. A `moved` target that names no resource or module -- a typo, or a rename that
+   was not carried through. The state object lands at an address nothing
+   declares, so it is destroyed. Most targets here point *inside* a vendored
+   module, so the resource is resolved through .terraform/modules/modules.json
+   and checked there: `module.oxbow_queue[0].aws_sqs_queue.thsi` is the shape
+   that matters, and checking only the module head misses it.
 
 3. A `moved` target with an unusable index: an index on a resource that declares
    no count, or a counted module referenced without one. (An *unindexed*
    resource target is fine -- that is a whole-resource move, which keeps its
    keys; hazard 1 covers the case where the source has none to keep.)
 
-4. A `removed` block without `lifecycle { destroy = false }`. That deletes the
+4. Two `moved` blocks sharing one target, which collapses two objects onto one
+   address.
+
+5. A `removed` block without `lifecycle { destroy = false }`. That deletes the
    resource instead of forgetting it -- here, a live Delta lock table or a
    bucket's entire notification configuration.
 
@@ -33,6 +39,7 @@ immutable, and shelling out to `git show main:` fails under a detached-HEAD
 checkout and breaks outright once this branch merges.
 """
 
+import json
 import os
 import pathlib
 import re
@@ -56,7 +63,11 @@ DESTROY_FALSE = re.compile(r"lifecycle\s*\{[^}]*\bdestroy\s*=\s*false\b", re.S)
 DECL = re.compile(
     r'^(resource|module)\s+"([^"]+)"(?:\s+"([^"]+)")?\s*\{(.*?)^\}', re.S | re.M
 )
-COUNTED = re.compile(r"^\s*(count|for_each)\s*=", re.M)
+# Anchored to one indent level: a nested `dynamic "x" { for_each = ... }` must
+# not make its enclosing resource look counted.
+COUNTED = re.compile(r"^[ \t]{1,2}(count|for_each)\s*=", re.M)
+CHILD_TARGET = re.compile(r"^module\.([A-Za-z0-9_-]+)(\[[^\]]*\])?\.(.+)$")
+INDEX = re.compile(r"\[([^\]]*)\]$")
 
 
 def strip_index(address):
@@ -67,6 +78,29 @@ def head_of(address):
     """The declared address a move target belongs to: module.X or type.name."""
     parts = address.split(".")
     return ".".join(parts[:2])
+
+
+def index_problem(address, repetition):
+    """Whether an address's instance key matches how the object is repeated.
+
+    count takes integers and for_each strings, so `this[0]` on a for_each
+    resource and `this["sqs"]` on a counted one are both addresses that do not
+    exist -- which OpenTofu plans as a destroy rather than rejecting.
+    """
+    match = INDEX.search(address)
+    if match is None:
+        # Only reached for a module head, where the unindexed form names no
+        # instance. For a resource it is a legal whole-resource move.
+        return f"declares {repetition}, so it needs an index" if repetition else None
+    key = match.group(1)
+    quoted = key.startswith('"') and key.endswith('"')
+    if repetition is None:
+        return f"declares neither count nor for_each, so {address} is not an address"
+    if repetition == "count" and quoted:
+        return f"declares count, so its keys are integers, not {key}"
+    if repetition == "for_each" and not quoted:
+        return f'declares for_each, so its keys are strings, not {key}'
+    return None
 
 
 def load_prior():
@@ -87,17 +121,63 @@ def load_prior():
     return prior
 
 
-def load_config():
-    """Declared addresses in TF_DIR, mapped to whether they are counted."""
+def declared_in(directory):
+    """Declared addresses in one directory -> "count", "for_each" or None."""
     declared = {}
-    files = sorted(TF_DIR.glob("*.tf"))
-    if not files:
-        sys.exit(f"no .tf files in {TF_DIR}; refusing to pass vacuously")
-    for path in files:
+    for path in sorted(directory.glob("*.tf")):
         for kind, first, second, body in DECL.findall(path.read_text()):
             address = f"{first}.{second}" if kind == "resource" else f"module.{first}"
-            declared[address] = bool(COUNTED.search(body))
+            match = COUNTED.search(body)
+            declared[address] = match.group(1) if match else None
     return declared
+
+
+def load_config():
+    if not sorted(TF_DIR.glob("*.tf")):
+        sys.exit(f"no .tf files in {TF_DIR}; refusing to pass vacuously")
+    return declared_in(TF_DIR)
+
+
+def load_module_dirs():
+    """Child module name -> its source directory, from `tofu init`'s manifest."""
+    manifest = TF_DIR / ".terraform" / "modules" / "modules.json"
+    if not manifest.is_file():
+        return None
+    return {
+        entry["Key"]: TF_DIR / entry["Dir"]
+        for entry in json.loads(manifest.read_text())["Modules"]
+        if entry.get("Key")
+    }
+
+
+def child_target_problem(to, module_dirs):
+    """Resolve a target inside a child module and check it names a real address.
+
+    Most targets here are of this shape, and it is the half no other tool sees:
+    the module head can be perfectly valid while the resource inside it is a
+    typo, which OpenTofu plans as a destroy.
+    """
+    match = CHILD_TARGET.match(to)
+    if not match:
+        return None
+    name, _, inner = match.groups()
+    directory = module_dirs.get(name)
+    if directory is None or not directory.is_dir():
+        return f"module {name} is not initialised; run `tofu init` before the guard"
+
+    inner_head = head_of(inner)
+    bare = strip_index(inner_head)
+    declared = declared_in(directory)
+    if bare not in declared:
+        return f"{bare} is not declared in module {name} ({directory})"
+
+    repetition = declared[bare]
+    # An unindexed resource target is a legal whole-resource move; only a module
+    # needs its index. Hazard 1 covers a source with no key to carry over.
+    if not inner_head.endswith("]") and not bare.startswith("module."):
+        return None
+    problem = index_problem(inner_head, repetition)
+    return f"{bare} in module {name} {problem}" if problem else None
 
 
 def load_blocks():
@@ -115,8 +195,16 @@ def main():
     declared = load_config()
     blocks = load_blocks()
 
+    module_dirs = load_module_dirs()
+    if module_dirs is None:
+        sys.exit(
+            f"no {TF_DIR}/.terraform/modules/modules.json; run `tofu init` first, "
+            "or the in-module half of every target goes unchecked"
+        )
+
     problems = []
     sources = set()
+    targets = {}
     moved = removed = 0
 
     for filename, kind, body in blocks:
@@ -152,28 +240,33 @@ def main():
                 f"       source has no instance key, so the target must name one: {to}[0]"
             )
 
-        # Hazards 2 and 3: the target must name something, with a usable index.
+        # Hazards 2 and 3: the target must name something, with a usable index,
+        # at the head and again inside the module the head names.
         head = head_of(to)
         bare = strip_index(head)
-        indexed = head.endswith("]")
         if bare not in declared:
+            target_problem = f"{bare} names no resource or module in {TF_DIR}"
+        # A counted module's instances are module.X[k]; module.X alone is no
+        # prefix for a resource inside it. Unlike a resource, where the
+        # unindexed form is a legal whole-resource move that keeps its keys.
+        elif head.endswith("]") or bare.startswith("module."):
+            problem = index_problem(head, declared[bare])
+            target_problem = f"{bare} {problem}" if problem else child_target_problem(to, module_dirs)
+        else:
+            target_problem = None
+
+        if target_problem:
             problems.append(
-                f"DESTROYS: {frm}\n       -> {to} ({where})\n"
-                f"       {bare} names no resource or module in {TF_DIR}"
+                f"DESTROYS: {frm}\n       -> {to} ({where})\n       {target_problem}"
             )
-        elif indexed and not declared[bare]:
+
+        # Hazard 4: two blocks landing on one address.
+        if to in targets:
             problems.append(
-                f"DESTROYS: {frm}\n       -> {to} ({where})\n"
-                f"       {bare} declares no count, so {head} is not an address"
+                f"DESTROYS: {frm} and {targets[to]} ({where})\n"
+                f"       both move onto {to}; one object would overwrite the other"
             )
-        elif bare.startswith("module.") and declared[bare] and not indexed:
-            # A counted module's instances are module.X[k]; module.X alone is no
-            # prefix for a resource inside it. Unlike a resource, where the
-            # unindexed form is a legal whole-resource move that keeps its keys.
-            problems.append(
-                f"DESTROYS: {frm}\n       -> {to} ({where})\n"
-                f"       {bare} declares count, so the target must be written {bare}[0]..."
-            )
+        targets[to] = frm
 
     # The omission case: a prior resource with no block and no surviving
     # declaration at the same address is destroyed without anyone saying so.

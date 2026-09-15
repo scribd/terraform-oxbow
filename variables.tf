@@ -27,9 +27,12 @@ variable "s3_path" {
   type        = string
   description = "Key prefix within the bucket where the parquet files are stored"
 
+  # Empty would make every object grant "bucket//*", matching only keys that
+  # literally begin with a slash -- so ingestion would 403 at runtime, not fail
+  # at plan. Tables at the bucket root are not a shape this module supports.
   validation {
-    condition     = !startswith(var.s3_path, "/") && !endswith(var.s3_path, "/")
-    error_message = "s3_path must not start or end with a slash."
+    condition     = length(var.s3_path) > 0 && !startswith(var.s3_path, "/") && !endswith(var.s3_path, "/")
+    error_message = "s3_path must be a non-empty prefix with no leading or trailing slash."
   }
 }
 

@@ -47,7 +47,6 @@ module "auto_tagging_lambda" {
       event_source_arn = module.auto_tagging_queue[0].queue_arn
     }
   }
-  create_current_version_allowed_triggers = false
 
   tags = var.tags
 }
@@ -95,10 +94,9 @@ resource "aws_sns_topic_subscription" "auto_tagging" {
 resource "aws_iam_policy" "auto_tagging" {
   count = local.enabled.auto_tagging ? 1 : 0
 
-  name        = local.auto_tagging_policy
-  description = "Auto-tagging lambda access to tag objects under the configured prefix and consume its queue"
-  policy      = data.aws_iam_policy_document.auto_tagging[0].json
-  tags        = var.tags
+  name   = local.auto_tagging_policy
+  policy = data.aws_iam_policy_document.auto_tagging[0].json
+  tags   = var.tags
 }
 
 data "aws_iam_policy_document" "auto_tagging" {

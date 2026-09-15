@@ -77,7 +77,6 @@ module "glue_create_lambda" {
       event_source_arn = module.glue_create_queue[0].queue_arn
     }
   }
-  create_current_version_allowed_triggers = false
 
   tags = var.tags
 }
@@ -126,7 +125,7 @@ resource "aws_iam_policy" "glue_create" {
   count = local.enabled.glue_create ? 1 : 0
 
   name        = var.glue_create.iam_policy_name
-  description = "Glue create policy allows access to Athena, Glue and the configured prefix"
+  description = "Glue create policy allows access to Athena and S3"
   policy      = data.aws_iam_policy_document.glue_create[0].json
   tags        = var.tags
 }

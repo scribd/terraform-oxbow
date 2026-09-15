@@ -46,7 +46,6 @@ module "group_events_lambda" {
       maximum_batching_window_in_seconds = var.group_events.maximum_batching_window_in_seconds
     }
   }
-  create_current_version_allowed_triggers = false
 
   tags = var.tags
 }
