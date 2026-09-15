@@ -12,3 +12,9 @@ terraform {
     }
   }
 }
+
+provider "aws" {
+  region = local.region
+}
+
+provider "datadog" {}

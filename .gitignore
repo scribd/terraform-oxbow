@@ -1,7 +1,9 @@
 *.sw*
-terraform.tfvars
+*.tfvars
+*.tfvars.json
 .terraform/
 terraform.tfstate*
+.terraform.tfstate.lock.info
 .terraform.lock.hcl
 changes.exist
 .plan
