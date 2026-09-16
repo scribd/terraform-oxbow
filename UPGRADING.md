@@ -183,6 +183,22 @@ as inline attributes or did not have at all.
 - **The FIFO dead letter queue keeps `content_based_deduplication = false`.**
   The sqs module would otherwise coalesce it from the primary FIFO queue and
   flip it to `true`; it is pinned explicitly.
+- **Queue policies and redrive policies move off the queue and onto their own
+  resources.** The previous version set `policy` and `redrive_policy` inline on
+  `aws_sqs_queue`; the sqs module uses separate `aws_sqs_queue_policy` and
+  `aws_sqs_queue_redrive_policy` resources. Both attributes are Optional+Computed,
+  so a moved queue keeps its old value in state and the plan shows it as
+  unchanged while the new resource quietly takes ownership — this is what lets
+  the world-writable DLQ policy be overwritten, but it also means **the plan
+  cannot show you a change in `maxReceiveCount`**. Before applying, read the
+  current value and check it against what the module will set (`redrive_policy`
+  for the primary queues, `group_events.max_receive_count` for the grouping
+  pair, default 8 there and 10 elsewhere):
+
+  ```
+  aws sqs get-queue-attributes --queue-url <url> \
+    --attribute-names RedrivePolicy --profile <profile>
+  ```
 - **SQS-managed encryption is switched on** (`sqs_managed_sse_enabled`, default
   `true`). This is an in-place attribute change, costs nothing, and does not
   affect S3 or SNS delivery. Set the variable to `false` to keep queues
@@ -194,6 +210,9 @@ as inline attributes or did not have at all.
   in v1.0.9. Their `description` is deliberately unchanged — it is ForceNew, and
   the destroy half does not detach first, so editing it replaces the policy and
   then fails on `DeleteConflict`. Leave those four strings alone.
+- **`skip_destroy = true` appears on the Athena bucket's
+  `aws_s3_bucket_public_access_block`**, a new default in s3-bucket v5. In-place,
+  and it only means the block survives a bucket destroy.
 - **The vendored `s3-bucket` module behind the glue-create Athena results bucket
   jumps 4.1.2 → 5.15.4.** No resource address is orphaned across that bump, so
   nothing is destroyed and no `moved` block is needed, but it is a major version
