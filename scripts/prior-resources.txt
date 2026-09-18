@@ -1,0 +1,56 @@
+# Every managed resource and module declared in v1.0.9, the last release before
+# the rewrite, and whether it declared count or for_each. Frozen data: that tree
+# is immutable, so this file never needs regenerating.
+#
+# The guard uses it for two things: a keyless `moved` source that was keyed here
+# keeps its key across a whole-resource move, and every address here must be
+# accounted for by a moved block, a removed block, an unchanged declaration, or
+# the intentional-destroy list in check-moved-blocks.py.
+#
+# Data sources are omitted: `moved` does not apply to them.
+#
+# <keyed|unkeyed> <address>
+keyed   aws_athena_workgroup.glue_create
+unkeyed aws_dynamodb_table.this_oxbow_locking
+keyed   aws_glue_catalog_table.this_glue_table
+keyed   aws_iam_policy.auto_tagging_lambda
+keyed   aws_iam_policy.glue_create_managed
+keyed   aws_iam_policy.glue_sync_managed
+unkeyed aws_iam_policy.this_lambda_permissions
+keyed   aws_iam_role.auto_tagging_lambda
+keyed   aws_iam_role.glue_create
+keyed   aws_iam_role.glue_sync
+unkeyed aws_iam_role.oxbow_lambda_role
+keyed   aws_lambda_event_source_mapping.auto_tagging
+keyed   aws_lambda_event_source_mapping.glue_create
+keyed   aws_lambda_event_source_mapping.glue_sync
+keyed   aws_lambda_event_source_mapping.group_events_lambda_sqs_trigger
+unkeyed aws_lambda_event_source_mapping.this_lambda_events
+keyed   aws_lambda_function.auto_tagging
+keyed   aws_lambda_function.glue_create_lambda
+keyed   aws_lambda_function.glue_sync_lambda
+keyed   aws_lambda_function.group_events_lambda
+unkeyed aws_lambda_function.this_lambda
+keyed   aws_lambda_permission.auto_tagging
+unkeyed aws_lambda_permission.this_lambda_allow_bucket_permissions
+keyed   aws_s3_bucket_notification.this_bucket_notification
+keyed   aws_sns_topic_subscription.auto_tagging
+keyed   aws_sns_topic_subscription.glue_create_sns_sub
+keyed   aws_sns_topic_subscription.glue_sync_sns_sub
+keyed   aws_sns_topic_subscription.this_sns_sub
+keyed   aws_sqs_queue.auto_tagging
+keyed   aws_sqs_queue.auto_tagging_dl
+keyed   aws_sqs_queue.glue_create
+keyed   aws_sqs_queue.glue_create_dl
+keyed   aws_sqs_queue.glue_sync
+keyed   aws_sqs_queue.glue_sync_dl
+keyed   aws_sqs_queue.group_events_lambda_sqs
+keyed   aws_sqs_queue.group_events_lambda_sqs_dlq
+keyed   aws_sqs_queue.oxbow_lambda_fifo_sqs
+keyed   aws_sqs_queue.oxbow_lambda_fifo_sqs_dlq
+keyed   aws_sqs_queue.this_DL
+keyed   aws_sqs_queue.this_sqs
+keyed   aws_sqs_queue_redrive_allow_policy.glue_syncredrive_allow_policy
+keyed   aws_sqs_queue_redrive_allow_policy.terraform_queue_redrive_allow_policy
+keyed   datadog_monitor.dead_letters_monitor
+keyed   module.glue_create_athena_workgroup_bucket
