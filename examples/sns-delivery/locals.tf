@@ -3,7 +3,7 @@ locals {
   env    = "dev"
   prefix = "example-oxbow-sns"
 
-  bucket  = "scribdinc-data-lake-${local.env}"
+  bucket  = "example-data-lake-${local.env}"
   s3_path = "catalogs/bronze_monolith"
 
   # A topic the bucket already fans its object-created events out to.

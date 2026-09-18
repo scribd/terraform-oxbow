@@ -19,12 +19,12 @@ changes below.
 - **This assumes you are on v1.0.9.** From v1.0.8 or earlier your plan will also
   destroy resources the module dropped *before* this rewrite — notably the
   Kinesis Firehose delivery stream and its IAM role and policy, gone since
-  v1.0.4 and carrying no `removed` block. `scribd/terraform-payments` pins
-  `v1.0.3` and still passes `lambda_kinesis_role_name`, so it is the one
-  affected; upgrade it to v1.0.9 first, or read its plan for destroys outside
-  the list below. The same applies to `v1.1` and `v1.2`: they sort above
-  `v1.0.9` under semver but point at January 2024 commits that predate the glue
-  stages, so a caller pinned to either is on a pre-rewrite tree too.
+  v1.0.4 and carrying no `removed` block. If you still pass
+  `lambda_kinesis_role_name`, you are on such a version: upgrade to v1.0.9
+  first, or read your plan for destroys outside the list below. The same applies
+  to `v1.1` and `v1.2`: they sort above `v1.0.9` under semver but point at
+  January 2024 commits that predate the glue stages, so a caller pinned to
+  either is on a pre-rewrite tree too.
 
 ## Three resources leave this module's scope
 
@@ -225,9 +225,7 @@ upgrade. They granted `s3.amazonaws.com` the right to invoke the oxbow and
 auto-tagging functions, but nothing uses that right: every module instance
 drives its lambda through an SQS event source mapping, and the bucket
 notification this module used to write targeted the *queue*, never a function.
-Checked against every live call site — `scribdinc/logs-fastly` (three
-instances), `scribd/airbyte` and `scribd/terraform-payments` — none invokes a
-function directly from S3.
+Checked against every live call site: none invokes a function directly from S3.
 
 This is the one place the upgrade destroys something, and it is a grant
 removal, so it cannot break a path that was working. If you do point a bucket
@@ -343,16 +341,18 @@ that does still hold one forgets it rather than deleting a live catalog entry.
   delta-rs docs name but were live before this change. Both want a dev apply to
   confirm before tightening; tracked separately rather than guessed at here.
 
-## What each known call site must do
+## What each call site must do
 
-| Repo | Change needed |
+Find your instance in the left column: how the ingest queue is fed is what
+decides the change.
+
+| Your configuration | Change needed |
 | --- | --- |
-| `scribdinc/logs-fastly` (×3) | SNS-fed: set `s3_notifies_ingest_queue = false`; adopt the lock table |
-| `scribd/airbyte` | SNS-fed: set `s3_notifies_ingest_queue = false`; adopt the lock table |
-| `scribd/terraform-payments` | Had `enable_bucket_notification = true`: adopt the bucket notification *and* the lock table; the `s3_notifies_ingest_queue` default is already correct |
+| SNS delivers the bucket's events to the queue | Set `s3_notifies_ingest_queue = false`; adopt the lock table |
+| `enable_bucket_notification = true` | Adopt the bucket notification *and* the lock table; the `s3_notifies_ingest_queue` default is already correct |
 
-All three also need the flat variables translated to the objects below, and a
-decision on `manage_lambda_log_groups`.
+Every call site also needs the flat variables translated to the objects below,
+and a decision on `manage_lambda_log_groups`.
 
 ## Interface changes
 
@@ -371,8 +371,8 @@ planning.
 | `enable_bucket_notification` | gone — the caller owns the bucket notification; see above |
 | `enabled_dead_letters_monitoring` + `dl_critical` + `dl_warning` + `dl_ok` + `dl_alert_recipients` + `dl_alert_message` + `tags_monitoring` + `monitoring_query_conditions` | `dead_letter_monitoring = { critical, warning?, ok?, alert_recipients?, alert_message?, tags?, query_conditions? }` |
 | `lambda_function_name` + `lambda_s3_bucket` + `lambda_s3_key` + `oxbow_lambda_role_name` + `lambda_permissions_policy_name` + `sqs_queue_name` + `sqs_queue_name_dl` | `oxbow = { lambda_function_name, lambda_s3_bucket, lambda_s3_key, role_name, policy_name, queue_name, dl_queue_name }` |
-| `warehouse_bucket_arn` / `warehouse_bucket_account_id` | `bucket_arn` / `bucket_account_id` — the module is generic; "warehouse" came from the retired terraform-data-warehouse lineage and described one consumer's bucket out of three |
-| `sqs_fifo_queue_name` / `sqs_fifo_DL_queue_name` appended `.fifo` **unconditionally** | `group_events.fifo_queue_name` / `.fifo_dl_queue_name` append it only if absent. If your current value ends in `.fifo`, keep the doubled form (`x.fifo.fifo`) or the queue is replaced — `name` is ForceNew. logs-fastly and airbyte pass names without the suffix, so both are unaffected. |
+| `warehouse_bucket_arn` / `warehouse_bucket_account_id` | `bucket_arn` / `bucket_account_id` — the module is generic; "warehouse" described only one caller's bucket |
+| `sqs_fifo_queue_name` / `sqs_fifo_DL_queue_name` appended `.fifo` **unconditionally** | `group_events.fifo_queue_name` / `.fifo_dl_queue_name` append it only if absent. If your current value ends in `.fifo`, keep the doubled form (`x.fifo.fifo`) or the queue is replaced — `name` is ForceNew. A value without the suffix is unaffected. |
 | the oxbow lambda was always created | `oxbow` is now nullable like every other stage; leave it set to keep today's behaviour |
 | `sns_topic_arn = ""` meant "no topic" | `sns_delivery = { topic_arn, filter_policy?, filter_policy_scope? }`, or null |
 

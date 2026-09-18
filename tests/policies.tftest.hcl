@@ -37,7 +37,7 @@ mock_provider "aws" {
 mock_provider "datadog" {}
 
 variables {
-  bucket_arn = "arn:aws:s3:::scribdinc-data-lake-test"
+  bucket_arn = "arn:aws:s3:::example-data-lake-test"
   s3_path    = "catalogs/bronze_monolith"
 
 
@@ -75,7 +75,7 @@ run "trailing_slash_on_s3_path_is_rejected" {
 run "bucket_arn_must_be_an_arn" {
   command = plan
   variables {
-    bucket_arn = "scribdinc-data-lake-test"
+    bucket_arn = "example-data-lake-test"
   }
   expect_failures = [var.bucket_arn]
 }

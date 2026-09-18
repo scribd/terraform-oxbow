@@ -37,7 +37,7 @@ mock_provider "aws" {
 mock_provider "datadog" {}
 
 variables {
-  bucket_arn = "arn:aws:s3:::scribdinc-data-lake-test"
+  bucket_arn = "arn:aws:s3:::example-data-lake-test"
   s3_path    = "catalogs/bronze_monolith"
 
 

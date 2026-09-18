@@ -7,7 +7,7 @@ someone's next upgrade, so run them after touching `variables.tf`.
 | Example | Shape |
 | --- | --- |
 | [minimal](minimal/) | oxbow alone, fed by a bucket notification the caller owns |
-| [sns-delivery](sns-delivery/) | oxbow fed from an SNS topic, plus glue-sync — what logs-fastly and airbyte run |
+| [sns-delivery](sns-delivery/) | oxbow fed from an SNS topic, plus glue-sync — the most common shape |
 | [complete](complete/) | every stage on: grouping, auto-tagging, glue-create, glue-sync, Datadog monitors |
 | [glue-only](glue-only/) | `oxbow = null` — catalog upkeep for Delta tables something else writes |
 

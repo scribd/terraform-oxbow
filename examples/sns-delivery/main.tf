@@ -1,6 +1,5 @@
 # Oxbow fed from an SNS topic rather than straight from the bucket, with
-# glue-sync keeping the catalog in step. This is the shape logs-fastly and
-# airbyte run.
+# glue-sync keeping the catalog in step.
 
 resource "aws_dynamodb_table" "oxbow_locking" {
   name         = "${local.prefix}-lock"
