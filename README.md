@@ -25,7 +25,7 @@ S3 (or SNS) ──► group queue ──► group-events lambda ──► FIFO q
                      └──► DLQ                                └──► DLQ
 ```
 
-The bucket notification and the two DynamoDB tables are the caller's: this
+The bucket notification and the DynamoDB lock table are the caller's: this
 module takes their names and points its policies at them.
 
 Every stage, the core included, is gated by one variable: **null turns it off, a
@@ -62,7 +62,7 @@ something else writes.
 
 ```hcl
 module "oxbow" {
-  source = "github.com/scribd/terraform-oxbow?ref=v2.0.0"
+  source = "github.com/scribd/terraform-oxbow?ref=v3.0.0"
 
   bucket_arn = module.warehouse.s3_bucket_arn
   s3_path    = "catalogs/bronze_monolith"
@@ -77,12 +77,10 @@ module "oxbow" {
     dl_queue_name        = "${var.env}-oxbow-queue-dl"
   }
 
-  aws_s3_locking_provider        = "dynamodb"
   rust_log_deltalake_debug_level = "info"
   rust_log_oxbow_debug_level     = "info"
 
-  dynamodb_table_name          = "${var.env}-oxbow-lock"
-  logstore_dynamodb_table_name = "${var.env}-delta-logstore"
+  dynamodb_table_name = "${var.env}-oxbow-lock"
 
   dead_letter_monitoring = {
     critical         = 2
@@ -124,10 +122,10 @@ outlives any single pipeline, so neither belongs to this module:
   declare. This module creates no `aws_lambda_permission`, so if you point a
   notification straight at a function rather than at its queue, grant the
   invoke yourself.
-- **The lock table and the logstore table.** Pass their names as
-  `dynamodb_table_name` and `logstore_dynamodb_table_name`, required whenever the
-  `oxbow` stage is on. delta-rs hard-codes `key` as the lock table's partition
-  key.
+- **The lock table.** Pass its name as `dynamodb_table_name`, required whenever
+  the `oxbow` stage is on. The `dynamodb_lock` crate hard-codes `key` as its
+  partition key. This is oxbow's table-creation lock, not the delta-rs
+  logstore — see Upstream oxbow compatibility below.
 
 The module needs only what its policies reference: `bucket_arn` and
 `s3_path` scope the object grants to
@@ -137,6 +135,20 @@ Bucket-level listing (`s3:ListBucket`) is still granted on the bucket rather
 than the prefix — see the declined findings in UPGRADING.md.
 
 UPGRADING.md has copy-pasteable resources for both.
+
+## Upstream oxbow compatibility
+
+The caller supplies the lambda zip, so the module cannot check this itself.
+
+| oxbow release | delta-rs logstore | this module |
+| --- | --- | --- |
+| >= v1.11.0 | removed; `AWS_S3_LOCKING_PROVIDER` logs an error | v3.0.0 |
+| v1.10.0 – v1.10.1 | removed | v3.0.0 |
+| v1.9.0 – v1.9.2 | floating `main` pin, varies by build date | unsupported |
+| <= v1.8.9 | required for safe concurrent writes | v2.x |
+
+`dynamodb_table_name` is oxbow's own table-creation lock and is required on
+every release; only the logstore went away.
 
 ## Event delivery
 
@@ -197,20 +209,20 @@ AWS enforces Lambda (64) and SQS (80) name limits at *apply*, not at plan, so an
 over-long derived name fails partway through an apply. The module checks those
 names at plan time and fails with the offending name and its length. IAM, Athena
 and S3 names are left out because the provider already validates them
-client-side at plan, and the DynamoDB tables because the module no longer
-creates them.
+client-side at plan, and the DynamoDB lock table because the module no longer
+creates it.
 
 ## Required inputs
 
 Always: `bucket_arn`, `s3_path`, `rust_log_oxbow_debug_level`.
 
 Required only when the stage that consumes them is on — a glue-only deployment
-leaves all four unset:
+leaves all three unset:
 
 | Input | Required when |
 | --- | --- |
-| `dynamodb_table_name`, `logstore_dynamodb_table_name` | `oxbow` is set |
-| `aws_s3_locking_provider`, `rust_log_deltalake_debug_level` | `oxbow` is set |
+| `dynamodb_table_name` | `oxbow` is set |
+| `rust_log_deltalake_debug_level` | `oxbow` is set |
 | `oxbow.dl_queue_name` | `oxbow` is set and `group_events` is not |
 
 Everything else is a stage object (null-gated, above) or a tunable with a

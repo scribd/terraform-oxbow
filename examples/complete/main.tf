@@ -20,25 +20,6 @@ resource "aws_dynamodb_table" "oxbow_locking" {
   tags = local.tags
 }
 
-resource "aws_dynamodb_table" "delta_logstore" {
-  name         = "${local.prefix}-logstore"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "tablePath"
-  range_key    = "fileName"
-
-  attribute {
-    name = "tablePath"
-    type = "S"
-  }
-
-  attribute {
-    name = "fileName"
-    type = "S"
-  }
-
-  tags = local.tags
-}
-
 module "oxbow" {
   source = "../../"
 
@@ -117,12 +98,10 @@ module "oxbow" {
     query_conditions = "env:${local.env}"
   }
 
-  aws_s3_locking_provider        = "dynamodb"
   rust_log_deltalake_debug_level = "info"
   rust_log_oxbow_debug_level     = "info"
 
-  dynamodb_table_name          = aws_dynamodb_table.oxbow_locking.name
-  logstore_dynamodb_table_name = aws_dynamodb_table.delta_logstore.name
+  dynamodb_table_name = aws_dynamodb_table.oxbow_locking.name
 
   manage_lambda_log_groups          = true
   cloudwatch_logs_retention_in_days = 30

@@ -114,17 +114,6 @@ variable "rust_log_oxbow_debug_level" {
   description = "RUST_LOG level for the oxbow crate"
 }
 
-variable "aws_s3_locking_provider" {
-  type        = string
-  description = "Value of AWS_S3_LOCKING_PROVIDER for the oxbow lambda; required when the oxbow stage is on"
-  default     = null
-
-  validation {
-    condition     = var.oxbow == null || var.aws_s3_locking_provider != null
-    error_message = "aws_s3_locking_provider is required when the oxbow stage is on."
-  }
-}
-
 variable "enable_schema_evolution" {
   type        = bool
   description = "Set SCHEMA_EVOLUTION on the oxbow lambda"
@@ -156,14 +145,14 @@ variable "cloudwatch_logs_retention_in_days" {
 }
 
 ################################################################################
-# Lock tables
+# Lock table
 ################################################################################
 
-# Neither table is created here; both must exist before oxbow runs. Only the
-# oxbow stage touches them, so a deployment without it leaves them null.
+# Not created here; it must exist before oxbow runs. Only the oxbow stage
+# touches it, so a deployment without that stage leaves it null.
 variable "dynamodb_table_name" {
   type        = string
-  description = "Name of the existing delta-rs S3 locking table (DYNAMO_LOCK_TABLE_NAME); required when the oxbow stage is on"
+  description = "Name of the existing table oxbow locks on to create a Delta table (DYNAMO_LOCK_TABLE_NAME); required when the oxbow stage is on"
   default     = null
 
   validation {
@@ -174,22 +163,6 @@ variable "dynamodb_table_name" {
   validation {
     condition     = var.oxbow == null || var.dynamodb_table_name != null
     error_message = "dynamodb_table_name is required when the oxbow stage is on."
-  }
-}
-
-variable "logstore_dynamodb_table_name" {
-  type        = string
-  description = "Name of the existing delta logstore table (DELTA_DYNAMO_TABLE_NAME); required when the oxbow stage is on"
-  default     = null
-
-  validation {
-    condition     = var.logstore_dynamodb_table_name == null || can(regex("^[A-Za-z0-9_.-]{3,255}$", var.logstore_dynamodb_table_name))
-    error_message = "logstore_dynamodb_table_name must be a valid DynamoDB table name (3-255 chars)."
-  }
-
-  validation {
-    condition     = var.oxbow == null || var.logstore_dynamodb_table_name != null
-    error_message = "logstore_dynamodb_table_name is required when the oxbow stage is on."
   }
 }
 

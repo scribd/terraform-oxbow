@@ -45,21 +45,14 @@ locals {
 
   dynamodb_table_arn_prefix = "arn:${local.partition}:dynamodb:${local.region}:${local.account_id}:table"
   lock_table_arn            = var.dynamodb_table_name == null ? null : "${local.dynamodb_table_arn_prefix}/${var.dynamodb_table_name}"
-  logstore_table_arn        = var.logstore_dynamodb_table_name == null ? null : "${local.dynamodb_table_arn_prefix}/${var.logstore_dynamodb_table_name}"
 
-  # What delta-rs documents for its locking provider, plus the DescribeTable its
-  # client issues on init. No CreateTable: both tables are existing inputs.
-  # https://delta-io.github.io/delta-rs/usage/writing/writing-to-s3-with-locking-provider/
+  # The three calls the dynamodb_lock crate makes -- oxbow's own table-creation
+  # lock, which is not delta-rs's logstore. See README's compatibility matrix.
   expected_dynamodb_actions = [
     "dynamodb:GetItem",
     "dynamodb:PutItem",
-    "dynamodb:UpdateItem",
     "dynamodb:DeleteItem",
-    "dynamodb:Query",
-    "dynamodb:DescribeTable",
   ]
-
-  delta_lock_table_arns = [local.lock_table_arn, local.logstore_table_arn]
 
   # Traced to the calls each binary makes: glue-sync is get_table + update_table
   # only, glue-create adds the create actions indirectly because Athena runs its

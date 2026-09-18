@@ -60,7 +60,7 @@ run "everything_off_creates_nothing_but_still_plans" {
   }
 
   assert {
-    condition     = local.lock_table_arn == null && local.logstore_table_arn == null
+    condition     = local.lock_table_arn == null
     error_message = "No stage uses a lock table here, so its ARN must not be built from a null name"
   }
 

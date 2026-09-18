@@ -43,7 +43,6 @@ variables {
 
   rust_log_deltalake_debug_level = "info"
   rust_log_oxbow_debug_level     = "info"
-  aws_s3_locking_provider        = "dynamodb"
 
   oxbow = {
     lambda_function_name = "test-oxbow"
@@ -55,8 +54,7 @@ variables {
     dl_queue_name        = "test-oxbow-queue-dl"
   }
 
-  dynamodb_table_name          = "test-oxbow-lock"
-  logstore_dynamodb_table_name = "test-delta-logstore"
+  dynamodb_table_name = "test-oxbow-lock"
 
 
   group_events = {

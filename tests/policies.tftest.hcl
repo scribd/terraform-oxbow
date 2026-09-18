@@ -43,7 +43,6 @@ variables {
 
   rust_log_deltalake_debug_level = "info"
   rust_log_oxbow_debug_level     = "info"
-  aws_s3_locking_provider        = "dynamodb"
 
   oxbow = {
     lambda_function_name = "test-oxbow"
@@ -55,8 +54,7 @@ variables {
     dl_queue_name        = "test-oxbow-queue-dl"
   }
 
-  dynamodb_table_name          = "test-oxbow-lock"
-  logstore_dynamodb_table_name = "test-delta-logstore"
+  dynamodb_table_name = "test-oxbow-lock"
 
 }
 
@@ -307,27 +305,37 @@ run "same_account_deny_exempts_aws_services" {
   }
 }
 
-# delta-rs documents exactly these actions for the DynamoDB logstore. Table
-# creation is not among them: both tables are pre-existing inputs this module
-# is only pointed at.
-run "dynamodb_grant_matches_the_documented_delta_rs_set" {
+# The dynamodb_lock crate calls GetItem, PutItem and DeleteItem and nothing
+# else; its upsert_item helper funnels into PutItem. delta-rs's logstore is
+# gone, so the six actions it documented no longer apply.
+run "dynamodb_grant_matches_the_lock_crate_call_set" {
   command = plan
 
   assert {
     condition = toset(local.expected_dynamodb_actions) == toset([
       "dynamodb:GetItem",
       "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
       "dynamodb:DeleteItem",
-      "dynamodb:Query",
-      "dynamodb:DescribeTable",
     ])
-    error_message = "The DynamoDB grant drifted from the documented delta-rs requirement"
+    error_message = "The DynamoDB grant drifted from the calls the lock crate makes"
   }
 
   assert {
     condition     = !contains(local.expected_dynamodb_actions, "dynamodb:CreateTable")
-    error_message = "Neither table is created by the lambda, so CreateTable must not be granted"
+    error_message = "The table is a pre-existing input, so CreateTable must not be granted"
+  }
+}
+
+# One table, not two: the grant must not widen back to the removed logstore.
+run "dynamodb_grant_covers_only_the_lock_table" {
+  command = plan
+
+  assert {
+    condition = one([
+      for s in data.aws_iam_policy_document.oxbow_lambda[0].statement :
+      s.resources if s.sid == "TableCreationLock"
+    ]) == toset(["arn:aws:dynamodb:us-east-2:123456789012:table/test-oxbow-lock"])
+    error_message = "The lock grant must name exactly the one table oxbow locks on"
   }
 }
 

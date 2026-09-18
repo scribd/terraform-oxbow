@@ -43,7 +43,6 @@ variables {
 
   rust_log_deltalake_debug_level = "info"
   rust_log_oxbow_debug_level     = "info"
-  aws_s3_locking_provider        = "dynamodb"
 
   oxbow = {
     lambda_function_name = "test-oxbow"
@@ -55,8 +54,7 @@ variables {
     dl_queue_name        = "test-oxbow-queue-dl"
   }
 
-  dynamodb_table_name          = "test-oxbow-lock"
-  logstore_dynamodb_table_name = "test-delta-logstore"
+  dynamodb_table_name = "test-oxbow-lock"
 
 }
 
@@ -117,12 +115,17 @@ run "oxbow_environment_without_sns" {
 
   assert {
     condition     = local.oxbow_environment["DYNAMO_LOCK_TABLE_NAME"] == "test-oxbow-lock"
-    error_message = "Oxbow must be pointed at the lock table this module creates"
+    error_message = "Oxbow must be pointed at the existing table-creation lock table"
   }
 
+  # Setting the locking provider makes oxbow >= v1.11.0 log an error on every
+  # table open, and the logstore name is read by nothing. See README.
   assert {
-    condition     = local.oxbow_environment["DELTA_DYNAMO_TABLE_NAME"] == "test-delta-logstore"
-    error_message = "Oxbow must be pointed at the external logstore table"
+    condition = length(setintersection(
+      keys(local.oxbow_environment),
+      ["AWS_S3_LOCKING_PROVIDER", "DELTA_DYNAMO_TABLE_NAME"],
+    )) == 0
+    error_message = "The delta-rs DynamoDB logstore variables must not be set on the lambda"
   }
 
   assert {

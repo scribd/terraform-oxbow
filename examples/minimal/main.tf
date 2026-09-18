@@ -1,7 +1,7 @@
 # Oxbow on its own, fed by a bucket notification the caller owns.
 
-# Both lock tables belong to the caller: they outlive any one pipeline, and
-# delta-rs hard-codes "key" as the lock table's partition key.
+# The lock table belongs to the caller: it outlives any one pipeline, and the
+# dynamodb_lock crate hard-codes "key" as its partition key.
 resource "aws_dynamodb_table" "oxbow_locking" {
   name         = "${local.prefix}-lock"
   billing_mode = "PAY_PER_REQUEST"
@@ -14,25 +14,6 @@ resource "aws_dynamodb_table" "oxbow_locking" {
 
   attribute {
     name = "key"
-    type = "S"
-  }
-
-  tags = local.tags
-}
-
-resource "aws_dynamodb_table" "delta_logstore" {
-  name         = "${local.prefix}-logstore"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "tablePath"
-  range_key    = "fileName"
-
-  attribute {
-    name = "tablePath"
-    type = "S"
-  }
-
-  attribute {
-    name = "fileName"
     type = "S"
   }
 
@@ -55,12 +36,10 @@ module "oxbow" {
     dl_queue_name        = "${local.prefix}-queue-dl"
   }
 
-  aws_s3_locking_provider        = "dynamodb"
   rust_log_deltalake_debug_level = "info"
   rust_log_oxbow_debug_level     = "info"
 
-  dynamodb_table_name          = aws_dynamodb_table.oxbow_locking.name
-  logstore_dynamodb_table_name = aws_dynamodb_table.delta_logstore.name
+  dynamodb_table_name = aws_dynamodb_table.oxbow_locking.name
 
   # Greenfield: nothing has created these log groups yet, so the module must.
   manage_lambda_log_groups = true

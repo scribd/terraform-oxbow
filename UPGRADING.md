@@ -1,4 +1,27 @@
-# Upgrading to the terraform-aws-modules rewrite
+# Upgrading to v3.0.0
+
+Requires oxbow >= v1.10.0 in the lambda zip; see the compatibility table in
+README.md. Two inputs are **removed** — leaving them set is an error:
+
+- `logstore_dynamodb_table_name`. delta-rs deleted `S3DynamoDbLogStore` in
+  favour of S3 conditional put, so nothing reads `DELTA_DYNAMO_TABLE_NAME`.
+- `aws_s3_locking_provider`. From oxbow v1.11.0 setting it to `dynamodb` logs an
+  error on every table open and changes nothing.
+
+`dynamodb_table_name` stays required when the `oxbow` stage is on: it is
+oxbow's own table-creation lock, not the logstore, and a missing table panics
+the lambda on any prefix that has no Delta table yet.
+
+Expect an in-place update to the oxbow IAM policy. The grant drops the logstore
+ARN and narrows to the three actions the `dynamodb_lock` crate calls —
+`GetItem`, `PutItem`, `DeleteItem` — and its sid becomes `TableCreationLock`.
+No resource is replaced.
+
+The logstore table itself is left alone. It was never managed here, so it
+becomes unreferenced rather than destroyed; delete it once you have confirmed
+nothing else writes to it.
+
+# Upgrading to v2.0.0: the terraform-aws-modules rewrite
 
 The module now builds its lambdas, queues and buckets from the published
 `terraform-aws-modules` modules instead of raw resources. Every existing
@@ -86,7 +109,8 @@ tofu import aws_s3_bucket_notification.warehouse <bucket-name>
 `dynamodb_table_name` and `logstore_dynamodb_table_name` are required whenever
 the `oxbow` stage is on — they are interpolated into IAM resource ARNs, and the
 old `""` defaults produced a malformed policy that failed at apply. A deployment
-without oxbow leaves them unset.
+without oxbow leaves them unset. (In v3.0.0 the logstore input is gone; only
+`dynamodb_table_name` remains.)
 `enable_bucket_notification` /
 `bucket_notification` are gone. The two delivery paths are now declared
 independently: `s3_notifies_ingest_queue` (default `true`) and `sns_delivery`.
@@ -400,7 +424,7 @@ Other input changes:
   into the monitor query, so a missing or non-numeric threshold used to produce
   a malformed monitor.
 - `dynamodb_table_name` and `logstore_dynamodb_table_name` are required only
-  when the `oxbow` stage is on.
+  when the `oxbow` stage is on. (v3.0.0 removes the latter.)
 - `warehouse_bucket_name` is **removed**. Its only consumer was the bucket
   notification this module no longer owns; nothing else referenced it. Drop it
   from your module block.

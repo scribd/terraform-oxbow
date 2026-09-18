@@ -5,10 +5,8 @@
 locals {
   oxbow_environment = !local.enabled.oxbow ? {} : merge(
     {
-      AWS_S3_LOCKING_PROVIDER = var.aws_s3_locking_provider
-      RUST_LOG                = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
-      DYNAMO_LOCK_TABLE_NAME  = var.dynamodb_table_name
-      DELTA_DYNAMO_TABLE_NAME = var.logstore_dynamodb_table_name
+      RUST_LOG               = "deltalake=${var.rust_log_deltalake_debug_level},oxbow=${var.rust_log_oxbow_debug_level}"
+      DYNAMO_LOCK_TABLE_NAME = var.dynamodb_table_name
     },
     # With grouping on, the group-events lambda already unwrapped the envelope.
     !local.enabled.group_events && local.enabled.sns_delivery ? { UNWRAP_SNS_ENVELOPE = "true" } : {},
@@ -112,10 +110,10 @@ data "aws_iam_policy_document" "oxbow_lambda" {
   count = local.enabled.oxbow ? 1 : 0
 
   statement {
-    sid       = "DeltaLockTables"
+    sid       = "TableCreationLock"
     effect    = "Allow"
     actions   = local.expected_dynamodb_actions
-    resources = local.delta_lock_table_arns
+    resources = [local.lock_table_arn]
   }
 
   statement {

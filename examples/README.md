@@ -20,8 +20,8 @@ as far as they go without real values.
 
 ## What the caller owns
 
-Every example that runs oxbow declares the two DynamoDB tables itself, and
+Every example that runs oxbow declares the DynamoDB lock table itself, and
 `minimal` declares the bucket notification. Neither belongs to the module:
-S3 permits one notification configuration per bucket, and the lock tables
-outlive any one pipeline. Copy those resources rather than expecting the module
+S3 permits one notification configuration per bucket, and the lock table
+outlives any one pipeline. Copy those resources rather than expecting the module
 to make them.
